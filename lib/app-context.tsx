@@ -8,6 +8,7 @@ export interface User {
   id: string
   name: string
   firstName: string
+  lastName?: string
   email?: string
   phone?: string
   photo?: string
@@ -177,7 +178,7 @@ const defaultHospitalSettings: HospitalSettings = {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
-
+import {  useEffect } from "react"
 export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
@@ -186,8 +187,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [counters, setCounters] = useState<Counter[]>(defaultCounters)
   const [agents, setAgents] = useState<Agent[]>(defaultAgents)
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
-
-  // Auth functions
   const loginAsRole = useCallback((role: UserRole, name?: string, firstName?: string, email?: string) => {
     const newUser: User = {
       id: `user-${Date.now()}`,
@@ -519,7 +518,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-
+useEffect(() => {
+  const testAgent = defaultAgents.find(a => a.id === "a1");
+  if (testAgent) {
+    setUser({
+      id: testAgent.id,
+      name: testAgent.name,
+      firstName: testAgent.firstName,
+      email: testAgent.email,
+      role: "agent"
+    });
+    
+    setCounters(prev => prev.map(c => 
+      c.id === "c1" ? { ...c, isActive: true, agentId: testAgent.id } : c
+    ));
+  }
+}, []);
   return (
     <AppContext.Provider
       value={{

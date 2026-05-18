@@ -128,8 +128,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             <div className="flex flex-col items-start">
               <img
                 src="/placeholder-logo.svg"
-                alt="Rang+"                 onClick={() => onNavigate("#")}
-
+                alt="Rang+"
                 className="h-8 w-auto cursor-pointer"
               />
 
@@ -140,7 +139,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
           <nav className="hidden md:flex items-center gap-8">
             <button
-              onClick={() => onNavigate("services")}
+              // onClick={() => onNavigate("services")}
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Services
@@ -333,16 +332,24 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         >
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg bg-card">
-                <CardContent className="p-4 lg:p-6 text-center">
-                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Users className="size-6 text-primary" />
-                  </div>
-                  <p className="text-3xl font-bold text-foreground">{totalWaiting}</p>
-                  <p className="text-sm text-muted-foreground">Patients en attente</p>
-                </CardContent>
-              </Card>
-            </motion.div>
+  <Card className="border-0 shadow-lg bg-card">
+    <CardContent className="p-4 lg:p-6 text-center">
+      {/* Conteneur de l'icône avec position relative pour le point */}
+      <div className="relative mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
+        <Users className="size-6 text-primary" />
+        
+        {/* Le point qui clignote (Positionné en haut à droite de l'icône) */}
+        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+        </span>
+      </div>
+
+      <p className="text-3xl font-bold text-foreground">{totalWaiting}</p>
+      <p className="text-sm text-muted-foreground">Patients en attente</p>
+    </CardContent>
+  </Card>
+</motion.div>
 
             <motion.div variants={itemVariants}>
               <Card className="border-0 shadow-lg bg-card">

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { AppProvider } from "@/lib/app-context" // 👈 L'import magique ici
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -8,16 +9,11 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: 'Rang+ | Hôpital du Mali',
-  description: 'Application de gestion de file d\'attente hospitalière - Prenez votre ticket en ligne et suivez votre position en temps réel',
-icons: {
-  icon: [
-    {
-      url: '/icon.svg',
-      type: 'image/svg+xml',
-    },
-  ],
-  apple: '/icon.svg',  
-},
+  description: 'Application de gestion de file d\'attente hospitalière',
+  icons: {
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
+    apple: '/icon.svg',  
+  },
 }
 
 export default function RootLayout({
@@ -28,7 +24,10 @@ export default function RootLayout({
   return (
     <html lang="fr" className="bg-background">
       <body className="font-sans antialiased">
-        {children}
+        {/* 👈 On enveloppe TOUTE l'application ici */}
+        <AppProvider>
+          {children}
+        </AppProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useRouter } from "next/navigation"
+
 import { 
   Dialog, 
   DialogContent, 
@@ -39,7 +41,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   const { setUser } = useApp()
   const [mode, setMode] = useState<AuthMode>("login")
   const [isLoading, setIsLoading] = useState(false)
-  
+  const router = useRouter() 
   // Form states
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -77,25 +79,32 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       role = "agent"
     }
     
+ 
     setUser({
       id: "user-" + Date.now(),
       firstName: email.split("@")[0],
       lastName: "",
       email,
-      role
+      role,
+      name: ""
     })
     
     setIsLoading(false)
     handleClose()
     onSuccess()
+    if (role === "admin") {
+      router.push("/admin")
+    } else if (role === "agent") {
+      router.push("/agent")
+    } else {
+      router.push("/patient") // Les patients restent à la racine
+    }
   }
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    
-    // Simulate registration
-    await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 1000))
     
     setUser({
       id: "user-" + Date.now(),
@@ -121,6 +130,13 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     })
     handleClose()
     onSuccess()
+    if (role === "admin") {
+      router.push("/admin")
+    } else if (role === "agent") {
+      router.push("/agent")
+    } else {
+      router.push("/patient")
+    }
   }
 
   return (

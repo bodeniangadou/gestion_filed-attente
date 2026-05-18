@@ -36,6 +36,7 @@ const navItems: NavItem[] = [
   { icon: <QrCode className="size-5" />, label: "QR Codes", href: "qrcodes", roles: ["admin"] },
   { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "console", roles: ["agent"] },
   { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "queue", roles: ["agent"] },
+  { icon: <ToggleLeft className="size-5" />, label: "Mon Statut", href: "status", roles: ["agent"] },
   { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "tickets", roles: ["patient"] },
   { icon: <User className="size-5" />, label: "Profil", href: "profile", roles: ["admin", "agent", "patient"] },
   { icon: <Settings className="size-5" />, label: "Paramètres", href: "settings", roles: ["admin"] },
@@ -46,7 +47,7 @@ interface AppSidebarProps {
   onTabChange: (tab: string) => void
 }
 
-export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
+export default function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
   const { user, logout } = useApp()
 
   const filteredItems = navItems.filter(item => {

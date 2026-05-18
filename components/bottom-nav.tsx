@@ -37,7 +37,6 @@ export function BottomNav({ activeTab, onTabChange, onTakeTicket }: BottomNavPro
       return [
         { icon: LayoutDashboard, label: "Console", href: "console" },
         { icon: Stethoscope, label: "Ma File", href: "queue" },
-        { icon: Monitor, label: "Statut", href: "status" },
         { icon: User, label: "Profil", href: "profile" },
       ]
     }
