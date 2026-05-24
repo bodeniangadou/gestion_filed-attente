@@ -14,7 +14,6 @@ export default function AgentLayout({
 }) {
   const [activeTab, setActiveTab] = useState("console")
   
-  // On récupère les infos du guichet directement dans le layout
   const { getCurrentAgent, getAgentCounter } = useApp()
   const agent = getCurrentAgent()
   const counter = getAgentCounter()
@@ -23,7 +22,6 @@ export default function AgentLayout({
     setActiveTab(tab)
   }
 
-  // 1. SI PAS DE GUICHET ASSIGNÉ : On bloque TOUT le layout (Pas de sidebar, pas de nav, juste l'erreur)
   if (!agent || !counter) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
@@ -41,18 +39,14 @@ export default function AgentLayout({
     )
   }
 
-  // 2. SI TOUT EST OK : On affiche l'application normalement avec ses menus
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Menu pour Ordinateur (Sidebar Gauche) - S'affiche uniquement si connecté à un guichet */}
       <AppSidebar activeTab={activeTab} onTabChange={handleTabChange} />
 
-      {/* Contenu principal au milieu */}
       <main className="flex-1 bg-background pb-20 lg:pb-0 lg:pl-64"> 
         {children}
       </main>
 
-      {/* Menu pour Téléphone (Barre du Bas) - S'affiche uniquement si connecté à un guichet */}
       <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
     </div>
   )

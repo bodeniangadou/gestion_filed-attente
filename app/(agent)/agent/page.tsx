@@ -41,7 +41,6 @@ export default function AgentConsoleView() {
 
   const handleRecall = () => {
     if (currentPatient) {
-      // Simulate recall animation
       setCurrentPatient({ ...currentPatient, status: "called" })
     }
   }

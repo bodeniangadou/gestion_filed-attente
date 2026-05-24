@@ -7,10 +7,8 @@ import { CountersView } from "@/components/views/counters-view"
 import { AgentsView } from "@/components/views/agents-view"
 
 export default function AdminMainPage() {
-  // L'état 'tab' contrôle le composant actuellement affiché à l'écran
   const [currentTab, setCurrentTab] = useState<string>("dashboard")
 
-  // Fonction de retour au menu principal
   const handleBack = () => setCurrentTab("dashboard")
 
   switch (currentTab) {
@@ -21,7 +19,6 @@ export default function AdminMainPage() {
       return <AdminServicesView onBack={handleBack} />
 
     case "admin-counters":
-      // Si ton composant CountersView n'a pas de prop onBack, enveloppe-le ou ajoute-lui un bouton retour si besoin
       return (
         <div className="relative">
           <CountersView />

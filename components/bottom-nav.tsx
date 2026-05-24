@@ -25,9 +25,9 @@ export function BottomNav({ activeTab, onTabChange, onTakeTicket }: BottomNavPro
   const getNavItems = () => {
     if (!user || user.role === "visitor" || user.role === "patient") {
       return [
-        { icon: Home, label: "Accueil", href: "home" },
-        { icon: Stethoscope, label: "Services", href: "services" },
-        { icon: Plus, label: "Ticket", href: "take-ticket", isAction: true },
+        { icon: Home, label: "Accueil", href: "/patient/" },
+        { icon: Stethoscope, label: "Services", href: "/services" },
+        { icon: Plus, label: "Ticket", href: "/services/", isAction: true },
         { icon: Ticket, label: "Suivi", href: "tickets" },
         { icon: User, label: "Profil", href: "profile" },
       ]

@@ -112,7 +112,8 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       lastName,
       email,
       phone,
-      role: "patient"
+      role: "patient",
+      name: ""
     })
     
     setIsLoading(false)
@@ -126,7 +127,8 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       firstName: role === "admin" ? "Admin" : role === "agent" ? "Agent" : "Patient",
       lastName: "Demo",
       email: `${role}@demo.ml`,
-      role
+      role,
+      name: ""
     })
     handleClose()
     onSuccess()
@@ -234,13 +236,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
                   Creer un compte
                 </Button>
 
-                <button
-                  type="button"
-                  onClick={() => setMode("role-select")}
-                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Acces demo (sans compte)
-                </button>
+                
               </div>
             </motion.div>
           )}
