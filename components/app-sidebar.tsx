@@ -30,9 +30,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: <LayoutDashboard className="size-5" />, label: "Tableau de bord", href: "dashboard", roles: ["admin", "agent", "patient"] },
-  { icon: <Stethoscope className="size-5" />, label: "Services", href: "services", roles: ["admin", "patient", "visitor"] },
-  { icon: <Monitor className="size-5" />, label: "Guichets", href: "counters", roles: ["admin"] },
-  { icon: <Users className="size-5" />, label: "Agents", href: "agents", roles: ["admin"] },
+  { icon: <Stethoscope className="size-5" />, label: "Services", href: "admin-services", roles: ["admin", "patient", "visitor"] },
+  { icon: <Monitor className="size-5" />, label: "Guichets", href: "admin-counters", roles: ["admin"] },
+  { icon: <Users className="size-5" />, label: "Agents", href: "admin-agents", roles: ["admin"] },
   { icon: <QrCode className="size-5" />, label: "QR Codes", href: "qrcodes", roles: ["admin"] },
   { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "console", roles: ["agent"] },
   { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "queue", roles: ["agent"] },
@@ -48,7 +48,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
   const { user, logout } = useApp()
-
+  
   const filteredItems = navItems.filter(item => {
     if (!user) return item.roles.includes("visitor")
     return item.roles.includes(user.role)

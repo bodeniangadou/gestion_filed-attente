@@ -1,16 +1,20 @@
 "use client"
 
-import { useState } from "react"
-import { AdminDashboard } from "@/components/views/admin-dashboard" // Ajuste le chemin si nécessaire
+import { AdminDashboard } from "@/components/views/admin-dashboard"
 import { AdminServicesView } from "@/components/views/admin-services-view"
 import { CountersView } from "@/components/views/counters-view"
 import { AgentsView } from "@/components/views/agents-view"
 
-export default function AdminMainPage() {
-  // L'état 'tab' contrôle le composant actuellement affiché à l'écran
-  const [currentTab, setCurrentTab] = useState<string>("dashboard")
+interface AdminMainPageProps {
+  currentTab: string
+  setCurrentTab: (tab: string) => void
+}
 
-  // Fonction de retour au menu principal
+export default function AdminMainPage({
+  currentTab,
+  setCurrentTab,
+}: AdminMainPageProps) {
+
   const handleBack = () => setCurrentTab("dashboard")
 
   switch (currentTab) {
@@ -50,6 +54,26 @@ export default function AdminMainPage() {
         </div>
       )
 
+
+      case "qrcodes":
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-bold">QR Codes</h2>
+        <p className="text-muted-foreground">
+          Gestion et génération des QR Codes.
+        </p>
+      </div>
+    )
+
+  case "profile":
+    return (
+      <div className="p-8">
+        <h2 className="text-2xl font-bold">Mon Profil</h2>
+        <p className="text-muted-foreground">
+          Informations de l'utilisateur connecté.
+        </p>
+      </div>
+    )
     default:
       return <AdminDashboard onNavigate={setCurrentTab} />
   }
