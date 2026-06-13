@@ -1,6 +1,8 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { usePathname } from "next/navigation" // 👈 Pour détecter l'URL active
+import Link from "next/link"                 // 👈 Pour la navigation par URL
 import { 
   LayoutDashboard, 
   Stethoscope, 
@@ -10,7 +12,6 @@ import {
   Settings, 
   Monitor, 
   ListOrdered,
-  ToggleLeft,
   QrCode,
   LogOut,
   Building2
@@ -24,30 +25,28 @@ import { Separator } from "@/components/ui/separator"
 interface NavItem {
   icon: React.ReactNode
   label: string
-  href: string
+  href: string // 👈 Contiendra maintenant le vrai chemin URL
   roles: UserRole[]
 }
 
+// Mises à jour des chemins pour correspondre exactement à vos dossiers sous /admin
 const navItems: NavItem[] = [
-  { icon: <LayoutDashboard className="size-5" />, label: "Tableau de bord", href: "dashboard", roles: ["admin", "agent", "patient"] },
-  { icon: <Stethoscope className="size-5" />, label: "Services", href: "admin-services", roles: ["admin", "patient", "visitor"] },
-  { icon: <Monitor className="size-5" />, label: "Guichets", href: "admin-counters", roles: ["admin"] },
-  { icon: <Users className="size-5" />, label: "Agents", href: "admin-agents", roles: ["admin"] },
-  { icon: <QrCode className="size-5" />, label: "QR Codes", href: "qrcodes", roles: ["admin"] },
-  { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "console", roles: ["agent"] },
-  { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "queue", roles: ["agent"] },
-  { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "tickets", roles: ["patient"] },
-  { icon: <User className="size-5" />, label: "Profil", href: "profile", roles: ["admin", "agent", "patient"] },
-  { icon: <Settings className="size-5" />, label: "Paramètres", href: "settings", roles: ["admin"] },
+  { icon: <LayoutDashboard className="size-5" />, label: "Tableau de bord", href: "/admin", roles: ["admin"] },
+  { icon: <Stethoscope className="size-5" />, label: "Services", href: "/admin/services", roles: ["admin"] },
+  { icon: <Monitor className="size-5" />, label: "Guichets", href: "/admin/counters", roles: ["admin"] },
+  { icon: <Users className="size-5" />, label: "Agents", href: "/admin/agents", roles: ["admin"] },
+  { icon: <QrCode className="size-5" />, label: "QR Codes", href: "/admin/qrcodes", roles: ["admin"] },
+  { icon: <Settings className="size-5" />, label: "Paramètres", href: "/admin/settings", roles: ["admin"] },
+  // Garde les autres rôles si nécessaire, adaptés à vos routes futures
+  { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "/agent/console", roles: ["agent"] },
+  { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "/agent/queue", roles: ["agent"] },
+  { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "/patient/tickets", roles: ["patient"] },
+  { icon: <User className="size-5" />, label: "Profil", href: "/profile", roles: ["admin", "agent", "patient"] },
 ]
 
-interface AppSidebarProps {
-  activeTab: string
-  onTabChange: (tab: string) => void
-}
-
-export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
+export function AppSidebar() {
   const { user, logout } = useApp()
+  const pathname = usePathname() // 👈 Récupère l'URL courante (ex: /admin/services)
   
   const filteredItems = navItems.filter(item => {
     if (!user) return item.roles.includes("visitor")
@@ -71,23 +70,28 @@ export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation par vrais Liens */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-        {filteredItems.map((item) => (
-          <button
-            key={item.href}
-            onClick={() => onTabChange(item.href)}
-            className={cn(
-              "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-              activeTab === item.href
-                ? "bg-emerald text-primary-foreground"
-                : "text-muted-foreground hover:bg-accent hover:text-foreground"
-            )}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
+        {filteredItems.map((item) => {
+          // L'onglet est actif si l'URL correspond exactement
+          const isActive = pathname === item.href
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+                isActive
+                  ? "bg-primary text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
+          )
+        })}
       </nav>
 
       <Separator />

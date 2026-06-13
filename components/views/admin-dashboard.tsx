@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation" // 👈 Ajout du routeur Next.js
+import Link from "next/link"               // 👈 Ajout des vrais liens
 import { motion } from "framer-motion"
 import { 
   Users, 
@@ -19,26 +21,21 @@ import {
   ChevronRight,
   Stethoscope,
   Monitor,
-  UserCog,
-  ToggleLeft,
-  ToggleRight
+  UserCog
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { useApp } from "@/lib/app-context"
 
-interface AdminDashboardProps {
-  onNavigate: (tab: string) => void
-}
-
-export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
-  const { services, counters, agents, tickets, hospitalSettings, setHospitalSettings, getStatistics } = useApp()
+// 💡 Plus besoin de la prop onNavigate, Next.js gère ça par URL !
+export function AdminDashboard() {
+  const router = useRouter() // Forcer la navigation programmatique si besoin
+  const { services, counters, agents, tickets, hospitalSettings, getStatistics } = useApp()
   
   const stats = getStatistics()
-  
   const activeAgents = agents.filter(a => a.isOnline).length
+  
   const todayTickets = tickets.filter(t => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -47,14 +44,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   const recentActivity = [
     { type: "ticket", message: "Nouveau ticket C045 - Consultation", time: "Il y a 2 min", icon: Ticket },
-    { type: "agent", message: "Agent Diallo connecte - Guichet A1", time: "Il y a 5 min", icon: UserCog },
-    { type: "complete", message: "Ticket L023 termine - Laboratoire", time: "Il y a 8 min", icon: CheckCircle },
+    { type: "agent", message: "Agent Diallo connecté - Guichet A1", time: "Il y a 5 min", icon: UserCog },
+    { type: "complete", message: "Ticket L023 terminé - Laboratoire", time: "Il y a 8 min", icon: CheckCircle },
     { type: "alert", message: "File d'attente > 15 - Urgences", time: "Il y a 12 min", icon: AlertCircle },
   ]
-
-  const handleToggleAllServices = (active: boolean) => {
-    // This would toggle all services
-  }
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -72,9 +65,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           </div>
           
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => onNavigate("settings")}>
-              <Settings className="size-4" />
-              <span className="hidden sm:inline">Parametres</span>
+            {/* 🔗 VRAI LIEN : Redirige vers /admin/setting */}
+            <Button variant="outline" size="sm" className="gap-2" asChild>
+              <Link href="/admin/setting">
+                <Settings className="size-4" />
+                <span className="hidden sm:inline">Paramètres</span>
+              </Link>
             </Button>
           </div>
         </div>
@@ -122,33 +118,39 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           transition={{ delay: 0.4 }}
           className="mb-8"
         >
-          <h2 className="text-lg font-semibold text-foreground mb-4">Acces rapide</h2>
+          <h2 className="text-lg font-semibold text-foreground mb-4">Accès rapide</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              { label: "Services", desc: `${services.filter(s => s.isActive).length} actifs`, icon: Stethoscope, tab: "admin-services" },
-              { label: "Guichets", desc: `${counters.filter(c => c.isActive).length} ouverts`, icon: Monitor, tab: "admin-counters" },
-              { label: "Agents", desc: `${activeAgents} en ligne`, icon: UserCog, tab: "admin-agents" },
-              { label: "Statistiques", desc: "Rapports", icon: BarChart3, tab: "admin-stats" },
+              { label: "Services", desc: `${services.filter(s => s.isActive).length} actifs`, icon: Stethoscope, path: "/admin/services" },
+              { label: "Guichets", desc: `${counters.filter(c => c.isActive).length} ouverts`, icon: Monitor, path: "/admin/counters" },
+              { label: "Agents", desc: `${activeAgents} en ligne`, icon: UserCog, path: "/admin/agent" },
+              { label: "Statistiques", desc: "Rapports", icon: BarChart3, path: "/admin/stats" },
             ].map((item, index) => {
               const Icon = item.icon
               return (
-                <motion.button
+                <motion.div
                   key={item.label}
-                  onClick={() => onNavigate(item.tab)}
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.5 + index * 0.1 }}
-                  className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border hover:border-primary/30 hover:shadow-md transition-all text-left group"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                 >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
-                    <Icon className="size-6 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-semibold text-foreground">{item.label}</p>
-                    <p className="text-sm text-muted-foreground">{item.desc}</p>
-                  </div>
-                  <ChevronRight className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                </motion.button>
+                  {/* 🔗 VRAIS LIENS : Changés en balises Link pour utiliser les routes de dossiers */}
+                  <Link 
+                    href={item.path}
+                    className="flex w-full items-center gap-4 p-4 rounded-xl bg-card border border-border hover:border-primary/30 hover:shadow-md transition-all text-left group"
+                  >
+                    <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
+                      <Icon className="size-6 text-primary" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-semibold text-foreground">{item.label}</p>
+                      <p className="text-sm text-muted-foreground">{item.desc}</p>
+                    </div>
+                    <ChevronRight className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                  </Link>
+                </motion.div>
               )
             })}
           </div>
@@ -166,10 +168,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Activity className="size-5 text-primary" />
-                  Etat des services
+                  État des services
                 </CardTitle>
-                <Button variant="ghost" size="sm" onClick={() => onNavigate("admin-services")}>
-                  Voir tout
+                {/* 🔗 VRAI LIEN */}
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/admin/services">Voir tout</Link>
                 </Button>
               </CardHeader>
               <CardContent>
@@ -196,7 +199,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             <p className="text-xs text-muted-foreground">en attente</p>
                           </div>
                           <Badge variant={service.isActive ? "default" : "secondary"}>
-                            {service.isActive ? "Actif" : "Ferme"}
+                            {service.isActive ? "Actif" : "Fermé"}
                           </Badge>
                         </div>
                       </div>
@@ -217,7 +220,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Bell className="size-5 text-primary" />
-                  Activite recente
+                  Activité récente
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -262,7 +265,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     <Power className="size-7 text-primary-foreground" />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground text-lg">Controle global</h3>
+                    <h3 className="font-semibold text-foreground text-lg">Contrôle global</h3>
                     <p className="text-sm text-muted-foreground">
                       Horaires : {hospitalSettings.openTime} - {hospitalSettings.closeTime}
                     </p>
@@ -275,13 +278,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       {services.filter(s => s.isActive).length}/{services.length}
                     </p>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    className="gap-2"
-                    onClick={() => onNavigate("admin-settings")}
-                  >
-                    <Settings className="size-4" />
-                    Configurer
+                  {/* 🔗 VRAI LIEN */}
+                  <Button variant="outline" className="gap-2" asChild>
+                    <Link href="/admin/setting">
+                      <Settings className="size-4" />
+                      Configurer
+                    </Link>
                   </Button>
                 </div>
               </div>
