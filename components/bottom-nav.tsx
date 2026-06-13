@@ -42,7 +42,6 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
       ]
     }
     
-    // Admin routes physiques
     return [
       { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
       { icon: Stethoscope, label: "Services", href: "/admin/services" },

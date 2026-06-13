@@ -35,9 +35,7 @@ const navItems: NavItem[] = [
   { icon: <Stethoscope className="size-5" />, label: "Services", href: "/admin/services", roles: ["admin"] },
   { icon: <Monitor className="size-5" />, label: "Guichets", href: "/admin/counters", roles: ["admin"] },
   { icon: <Users className="size-5" />, label: "Agents", href: "/admin/agents", roles: ["admin"] },
-  { icon: <QrCode className="size-5" />, label: "QR Codes", href: "/admin/qrcodes", roles: ["admin"] },
   { icon: <Settings className="size-5" />, label: "Paramètres", href: "/admin/settings", roles: ["admin"] },
-  // Garde les autres rôles si nécessaire, adaptés à vos routes futures
   { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "/agent/console", roles: ["agent"] },
   { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "/agent/queue", roles: ["agent"] },
   { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "/patient/tickets", roles: ["patient"] },
@@ -70,22 +68,19 @@ export function AppSidebar() {
         </div>
       </div>
 
-      {/* Navigation par vrais Liens */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
        {filteredItems.map((item) => {
-  // 1. On calcule la vraie URL cible. 
-  // Si c'est "/profile", on y ajoute dynamiquement le rôle de l'utilisateur (ex: /admin/profile)
+
   const trueHref = item.href === "/profile" && user 
     ? `/${user.role}/profile` 
     : item.href
 
-  // 2. L'onglet est actif si l'URL du navigateur correspond à notre URL calculée
   const isActive = pathname === trueHref
 
   return (
     <Link
       key={item.href}
-      href={trueHref} // 👈 On passe la vraie URL ici
+      href={trueHref} 
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
         isActive

@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useApp } from "@/lib/app-context"
+import { Counter } from "@/lib/types" 
 
 export function CountersView() {
   const { counters, setCounters, services, agents } = useApp()
@@ -31,25 +32,26 @@ export function CountersView() {
       alert("Impossible de supprimer : le guichet est actif ou possède un agent assigné.");
     }
   };
-
- const handleCreate = () => {
+const handleCreate = () => {
   if (!newCounter.name || !newCounter.serviceId) return
   
-  const counter: Counter = {
+  const newCounterData = {
     id: `counter-${Date.now()}`,
     name: newCounter.name,
     serviceId: newCounter.serviceId,
     agentId: newCounter.agentId === "none" ? undefined : newCounter.agentId || undefined,
     isActive: false,
-    number: 0,                   // Initialisation du numéro de guichet
-    serviceName: getServiceName(newCounter.serviceId), // Récupération via ta fonction existante
-    ticketsServed: 0,            // Initialisation à 0
-  }
+    number: 0, 
+    serviceName: getServiceName(newCounter.serviceId),
+    ticketsServed: 0,
+  } as Counter; 
   
-  setCounters([...counters, counter])
+  setCounters([...counters, newCounterData])
   setShowCreateModal(false)
   setNewCounter({ name: "", serviceId: "", agentId: "" })
- }
+}
+
+ 
   const getServiceName = (serviceId: string) => services.find(s => s.id === serviceId)?.name || "Non assigné"
   const getAgentName = (agentId?: string) => {
     if (!agentId) return "Aucun agent connecté"

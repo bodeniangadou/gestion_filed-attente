@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { motion } from "react-redux" // ou framer-motion selon tes imports standard
 import { motion as motionFramer } from "framer-motion"
 import { 
   Building2, 
@@ -36,7 +35,6 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setIsLoading(true)
-    // Simuler ou appeler la mise à jour (Supabase / Context)
     setTimeout(() => {
       setIsLoading(false)
       alert("Paramètres enregistrés avec succès !")
