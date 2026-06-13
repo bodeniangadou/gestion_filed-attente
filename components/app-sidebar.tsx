@@ -72,26 +72,32 @@ export function AppSidebar() {
 
       {/* Navigation par vrais Liens */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-        {filteredItems.map((item) => {
-          // L'onglet est actif si l'URL correspond exactement
-          const isActive = pathname === item.href
+       {filteredItems.map((item) => {
+  // 1. On calcule la vraie URL cible. 
+  // Si c'est "/profile", on y ajoute dynamiquement le rôle de l'utilisateur (ex: /admin/profile)
+  const trueHref = item.href === "/profile" && user 
+    ? `/${user.role}/profile` 
+    : item.href
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                isActive
-                  ? "bg-primary text-primary-foreground font-semibold"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
-              )}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
-          )
-        })}
+  // 2. L'onglet est actif si l'URL du navigateur correspond à notre URL calculée
+  const isActive = pathname === trueHref
+
+  return (
+    <Link
+      key={item.href}
+      href={trueHref} // 👈 On passe la vraie URL ici
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+        isActive
+          ? "bg-primary text-primary-foreground font-semibold"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+      )}
+    >
+      {item.icon}
+      {item.label}
+    </Link>
+  )
+})}
       </nav>
 
       <Separator />
