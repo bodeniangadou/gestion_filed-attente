@@ -106,7 +106,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showTrackingModal, setShowTrackingModal] = useState(false)
-  
+
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [localTicket, setLocalTicket] = useState<{ number: string; service: string; waitTime: number; queuePos: number } | null>(null)
 
@@ -129,14 +129,18 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       localStorage.removeItem("rang_plus_anonymous_ticket");
     }
   }, [localTicket]);
+  const [isMounted, setIsMounted] = useState(false)
 
-  const generatedTicket = activeTicket 
-    ? { 
-        number: activeTicket.number, 
-        service: activeTicket.serviceName, 
-        waitTime: activeTicket.waitTime, 
-        queuePos: activeTicket.queuePosition 
-      } 
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+  const generatedTicket = activeTicket
+    ? {
+      number: activeTicket.number,
+      service: activeTicket.serviceName,
+      waitTime: activeTicket.waitTime,
+      queuePos: activeTicket.queuePosition
+    }
     : localTicket
 
   const totalWaiting = services.reduce((acc, s) => acc + s.currentQueue, 0)
@@ -161,7 +165,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     const nom = parts.slice(1).join(" ") || "Anonyme"
 
     const ticket = takeTicket(selectedService, nom, prenom)
-    
+
     if (ticket) {
       setLocalTicket({
         number: ticket.number,
@@ -202,7 +206,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-6">
-          <div 
+          <div
             className="flex items-center gap-3 cursor-pointer select-none"
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
           >
@@ -215,13 +219,13 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           </div>
 
           <nav className="hidden md:flex items-center gap-8">
-            <button 
+            <button
               onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })}
               className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Services
             </button>
-            
+
             {generatedTicket ? (
               <button
                 onClick={() => setShowTrackingModal(true)}
@@ -269,7 +273,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
         {mobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             className="md:hidden border-t border-border bg-background"
@@ -323,7 +327,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
 
         <div className="relative px-6 py-16 lg:py-24">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-4xl text-center">
+          <motion.div initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-4xl text-center">
             <div className="mb-8 flex flex-col items-center">
               <Badge variant="secondary" className="mb-4 px-4 py-1.5 text-sm font-medium">
                 Plateforme officielle de gestion des files d&apos;attente
@@ -331,7 +335,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             </div>
 
             <motion.h1
-              initial={{ opacity: 0, y: 20 }}
+              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
               className="mb-4 text-4xl font-bold tracking-tight text-foreground lg:text-6xl text-balance"
@@ -340,7 +344,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             </motion.h1>
 
             <motion.p
-              initial={{ opacity: 0, y: 20 }}
+              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
               className="mb-8 text-lg text-muted-foreground lg:text-xl text-pretty max-w-2xl mx-auto"
@@ -351,7 +355,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             </motion.p>
 
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
               className="flex flex-col sm:flex-row items-center justify-center gap-4"
@@ -459,21 +463,19 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             {filteredServices.map((service) => (
               <motion.div key={service.id} variants={itemVariants}>
                 <Card
-                  className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${
-                    service.isActive 
-                      ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg" 
+                  className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive
+                      ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
                       : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
-                  }`}
+                    }`}
                   onClick={() => handleOpenTicketModal(service)}
                 >
                   <CardContent className="p-5 flex flex-col h-full justify-between">
                     <div>
                       <div className="flex items-start justify-between mb-3">
-                        <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${
-                          service.isActive 
-                            ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground" 
+                        <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive
+                            ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
                             : "bg-muted text-muted-foreground"
-                        }`}>
+                          }`}>
                           {serviceIcons[service.icon] || <Building2 className="size-5" />}
                         </div>
                         <Badge variant={service.isActive ? "outline" : "destructive"} className="text-xs">
@@ -483,7 +485,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
                       <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
                       <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
                     </div>
-                    
+
                     <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
                         <Clock className="size-4" />
@@ -569,7 +571,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
               Votre rang a bien été calculé pour le service {generatedTicket?.service}.
             </DialogDescription>
           </DialogHeader>
-          
+
           <div className="my-6 rounded-2xl bg-primary/5 p-6 border-2 border-dashed border-primary/20">
             <p className="text-xs font-bold text-primary uppercase tracking-wider">Votre Numéro de Passage</p>
             <p className="text-5xl font-black text-primary mt-1 tracking-tight">{generatedTicket?.number}</p>
@@ -583,7 +585,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             className="w-full bg-primary text-white h-12 rounded-xl font-semibold"
             onClick={() => {
               setShowSuccessModal(false);
-              setTimeout(() => setShowTrackingModal(true), 200); 
+              setTimeout(() => setShowTrackingModal(true), 200);
             }}
           >
             Suivre mon attente en direct
@@ -592,7 +594,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       </Dialog>
 
       {/* NOUVEAU COMPOSANT INTEGRÉ : MODAL DE SUIVI HORIZONTAL LARGE, SANS FLOU EXTÉRIEUR */}
-      <TicketTrackingModal 
+      <TicketTrackingModal
         isOpen={showTrackingModal}
         onClose={() => setShowTrackingModal(false)}
         ticket={generatedTicket}
@@ -707,7 +709,6 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         </motion.div>
       </section>
 
-      {/* FOOTER : Texte net, lisible et moderne */}
       <footer id="contact-section" className="px-6 py-12 bg-foreground text-background">
         <div className="mx-auto max-w-4xl">
           <div className="grid gap-8 lg:grid-cols-3 mb-8">
@@ -768,8 +769,8 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       {/* BOUTON FLOTTANT D'ACCÈS DIRECT AU TICKET ACTIF */}
       <AnimatePresence>
         {generatedTicket && !showTrackingModal && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+          <motion.div
+            initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
             className="fixed bottom-6 right-6 z-50"
