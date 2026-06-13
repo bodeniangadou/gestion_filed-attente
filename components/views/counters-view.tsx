@@ -32,20 +32,24 @@ export function CountersView() {
     }
   };
 
-  const handleCreate = () => {
-    if (!newCounter.name || !newCounter.serviceId) return
-    const counter = {
-      id: `counter-${Date.now()}`,
-      name: newCounter.name,
-      serviceId: newCounter.serviceId,
-      agentId: newCounter.agentId === "none" ? undefined : newCounter.agentId || undefined,
-      isActive: false,
-    }
-    setCounters([...counters, counter])
-    setShowCreateModal(false)
-    setNewCounter({ name: "", serviceId: "", agentId: "" })
+ const handleCreate = () => {
+  if (!newCounter.name || !newCounter.serviceId) return
+  
+  const counter: Counter = {
+    id: `counter-${Date.now()}`,
+    name: newCounter.name,
+    serviceId: newCounter.serviceId,
+    agentId: newCounter.agentId === "none" ? undefined : newCounter.agentId || undefined,
+    isActive: false,
+    number: 0,                   // Initialisation du numéro de guichet
+    serviceName: getServiceName(newCounter.serviceId), // Récupération via ta fonction existante
+    ticketsServed: 0,            // Initialisation à 0
   }
-
+  
+  setCounters([...counters, counter])
+  setShowCreateModal(false)
+  setNewCounter({ name: "", serviceId: "", agentId: "" })
+ }
   const getServiceName = (serviceId: string) => services.find(s => s.id === serviceId)?.name || "Non assigné"
   const getAgentName = (agentId?: string) => {
     if (!agentId) return "Aucun agent connecté"
