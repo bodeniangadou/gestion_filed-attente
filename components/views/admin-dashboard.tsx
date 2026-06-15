@@ -588,12 +588,11 @@ counter: (t as any).counter?.name || "—",
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* ── Header ── */}
       <div className="px-6 pt-8 pb-4">
         <div className="mx-auto flex max-w-7xl flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              {greeting}, {user?.firstName || "Administrateur"} {user?.name || ""} 👋
+              {greeting}, {user?.name || "Administrateur"} {user?.name || ""} 👋
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
               Espace de gestion — {hospitalSettings.name}
