@@ -192,7 +192,7 @@ export default function ConsoleAppel() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 pb-12">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-100/30 pb-12">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-6">
         <div className="flex flex-col sm:flex-row sm:justify-between gap-4 mb-8">
           <div className="flex items-center gap-3">
@@ -231,7 +231,7 @@ export default function ConsoleAppel() {
 
         <div className="mb-8">
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 px-6 py-8">
+            <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 px-6 py-8">
               <p className="text-emerald-100 text-xs font-semibold uppercase tracking-wide mb-2">
                 Patient actuel
               </p>
