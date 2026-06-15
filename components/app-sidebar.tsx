@@ -30,12 +30,19 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
+ {
+    icon: <LayoutDashboard className="size-5" />,
+    label: "Tableau de bord Admin",
+    href: "/admin/", // Ou la route réelle de ton admin
+    roles: ["admin"],
+  },
   {
     icon: <LayoutDashboard className="size-5" />,
     label: "Tableau de bord",
-    href: "/agent/dashboard",
-    roles: ["admin", "agent"],
+    href: "/agent", 
+    roles: ["agent"],
   },
+  
   {
     icon: <Stethoscope className="size-5" />,
     label: "Services",
