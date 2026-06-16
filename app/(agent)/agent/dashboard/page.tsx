@@ -45,6 +45,7 @@ export default function AgentDashboard() {
   const [lastAction, setLastAction] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // Synchronisation du ticket et gestion de l'état de chargement initial
   useEffect(() => {
     if (counter) {
       if (counter.currentTicket) {
@@ -101,6 +102,7 @@ export default function AgentDashboard() {
     setLastAction(open ? "Guichet ouvert" : "Guichet fermé")
   }
 
+  // 1. Écran de chargement pendant que le contexte récupère les infos
   if (isLoading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-background gap-3">
@@ -110,6 +112,7 @@ export default function AgentDashboard() {
     )
   }
 
+  // 2. Écran d'erreur uniquement si le chargement est fini et qu'aucun guichet n'existe vraiment
   if (!agent || !counter) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">

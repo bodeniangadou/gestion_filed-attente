@@ -1,6 +1,6 @@
 "use client"
 
-import { useState , useEffect } from "react"
+import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   Ticket, 
@@ -21,7 +21,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useApp, Ticket as TicketType } from "@/lib/app-context"
-import { redirect } from "next/navigation"
 
 interface PatientDashboardProps {
   onNavigate: (tab: string) => void
@@ -30,7 +29,6 @@ interface PatientDashboardProps {
 
 export  default function PatientDashboard({ onNavigate, onTakeTicket }: PatientDashboardProps) {
   const { user, getActiveTickets, getPatientHistory, cancelTicket } = useApp()
-  
   
   const activeTickets = getActiveTickets()
   const history = getPatientHistory()
@@ -75,16 +73,6 @@ export  default function PatientDashboard({ onNavigate, onTakeTicket }: PatientD
     const hours = Math.floor(minutes / 60)
     return `${hours}h ${minutes % 60}min`
   }
-  const [greeting, setGreeting] = useState("Bonjour")
-
-useEffect(() => {
-  const hour = new Date().getHours()
-  if (hour >= 18 || hour < 5) {
-    setGreeting("Bonsoir")
-  } else {
-    setGreeting("Bonjour")
-  }
-}, [])
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -92,9 +80,9 @@ useEffect(() => {
       <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div>
-            <h1 className="text-xl tracking-tight text-foreground flex items-center gap-2">
-  {greeting}, {user?.firstName || "Patient"} <span className="inline-block">👋</span>
-</h1>
+            <h1 className="text-lg font-bold text-foreground">
+              Bonjour, {user?.firstName || "Patient"}
+            </h1>
             <p className="text-sm text-muted-foreground">
               {activeTickets.length > 0 
                 ? `${activeTickets.length} ticket${activeTickets.length > 1 ? "s" : ""} en cours`
@@ -102,7 +90,7 @@ useEffect(() => {
               }
             </p>
           </div>
-          <Button onClick={()=>redirect("/patient/services")} className="gap-2">
+          <Button onClick={onTakeTicket} className="gap-2">
             <Ticket className="size-4" />
             Nouveau ticket
           </Button>
@@ -271,7 +259,7 @@ useEffect(() => {
                 <p className="text-muted-foreground mb-6">
                   Prenez un ticket pour rejoindre une file d&apos;attente
                 </p>
-                <Button onClick={()=>redirect("/patient/services")} className="gap-2">
+                <Button onClick={onTakeTicket} className="gap-2">
                   <Ticket className="size-4" />
                   Prendre un ticket
                 </Button>
@@ -406,15 +394,18 @@ useEffect(() => {
           <Button 
             variant="outline" 
             className="h-auto p-4 flex-col gap-2"
-onClick={()=>redirect("/patient/services")}          >
+            onClick={() => onNavigate("services")}
+          >
             <RefreshCw className="size-5 text-primary" />
             <span>Voir les services</span>
           </Button>
           <Button 
             variant="outline" 
-            className="h-auto p-4 flex-col gap-2" onClick={()=>redirect("/patient/profile" )}         >
+            className="h-auto p-4 flex-col gap-2"
+            onClick={() => onNavigate("profile")}
+          >
             <User className="size-5 text-primary" />
-            <span >Mon profil</span>
+            <span>Mon profil</span>
           </Button>
         </motion.div>
       </div>

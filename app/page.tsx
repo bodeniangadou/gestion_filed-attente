@@ -7,6 +7,7 @@ import { LoginModal } from "@/components/login-modal" // 💡 Ajuste le chemin v
 
 export default function HomePage() {
   const router = useRouter()
+  // 💡 ÉTAT : Permet de savoir si le modal doit être affiché ou masqué
   const [isLoginOpen, setIsLoginOpen] = useState(false)
 
   const handleTakeTicket = () => {
@@ -22,12 +23,14 @@ export default function HomePage() {
     alert("Fonctionnalité de scan QR Code (Simulation) : Caméra indisponible en maquette locale.")
   }
 
+  // 💡 CORRECTION : Au lieu de router.push, on passe l'état à true pour ouvrir le modal
   const handleLogin = () => {
     setIsLoginOpen(true)
   }
 
   return (
-    <div className="min-t-screen bg-background">
+    <div className="min-h-screen bg-background">
+      {/* Ta Landing principale */}
       <LandingView 
         onNavigate={(tab) => router.push(`/${tab}`)}
         onScanQR={handleScanQR}
@@ -35,11 +38,13 @@ export default function HomePage() {
         onLogin={handleLogin}
       />
 
+      {/* 💡 AJOUT : On pose le modal ici à la racine. Il écoute l'état 'isLoginOpen' */}
       <LoginModal 
         open={isLoginOpen} 
         onOpenChange={setIsLoginOpen}
         onSuccess={() => {
-          
+          // Ce code s'exécutera si tu as besoin de faire une action 
+          // supplémentaire après la connexion réussie.
           console.log("Utilisateur connecté avec succès !")
         }}
       />

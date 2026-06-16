@@ -1,6 +1,8 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { usePathname } from "next/navigation" // 👈 Pour détecter l'URL active
+import Link from "next/link"                 // 👈 Pour la navigation par URL
 import { 
   LayoutDashboard, 
   Stethoscope, 
@@ -10,7 +12,6 @@ import {
   Settings, 
   Monitor, 
   ListOrdered,
-  ToggleLeft,
   QrCode,
   LogOut,
   Building2
@@ -24,36 +25,32 @@ import { Separator } from "@/components/ui/separator"
 interface NavItem {
   icon: React.ReactNode
   label: string
-  href: string
+  href: string // 👈 Contiendra maintenant le vrai chemin URL
   roles: UserRole[]
 }
 
+// Mises à jour des chemins pour correspondre exactement à vos dossiers sous /admin
 const navItems: NavItem[] = [
-  { icon: <LayoutDashboard className="size-5" />, label: "Tableau de bord", href: "/", roles: ["admin", "agent", "patient"] },
-  { icon: <Stethoscope className="size-5" />, label: "Services", href: "services", roles: ["admin", "patient", "visitor"] },
-  { icon: <Monitor className="size-5" />, label: "Guichets", href: "counters", roles: ["admin"] },
-  { icon: <Users className="size-5" />, label: "Agents", href: "agents", roles: ["admin"] },
-  { icon: <QrCode className="size-5" />, label: "QR Codes", href: "qrcodes", roles: ["admin"] },
-  { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "console", roles: ["agent"] },
-  { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "queue", roles: ["agent"] },
-  { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "tickets", roles: ["patient"] },
-  { icon: <User className="size-5" />, label: "Profil", href: "profile", roles: ["admin", "agent", "patient"] },
-  { icon: <Settings className="size-5" />, label: "Paramètres", href: "settings", roles: ["admin"] },
+  { icon: <LayoutDashboard className="size-5" />, label: "Tableau de bord", href: "/admin", roles: ["admin"] },
+  { icon: <Stethoscope className="size-5" />, label: "Services", href: "/admin/services", roles: ["admin"] },
+  { icon: <Monitor className="size-5" />, label: "Guichets", href: "/admin/counters", roles: ["admin"] },
+  { icon: <Users className="size-5" />, label: "Agents", href: "/admin/agents", roles: ["admin"] },
+  { icon: <Settings className="size-5" />, label: "Paramètres", href: "/admin/settings", roles: ["admin"] },
+  { icon: <Monitor className="size-5" />, label: "Console d'Appel", href: "/agent/console", roles: ["agent"] },
+  { icon: <ListOrdered className="size-5" />, label: "Ma File", href: "/agent/queue", roles: ["agent"] },
+  { icon: <Ticket className="size-5" />, label: "Mes Tickets", href: "/patient/tickets", roles: ["patient"] },
+  { icon: <User className="size-5" />, label: "Profil", href: "/profile", roles: ["admin", "agent", "patient"] },
 ]
 
-interface AppSidebarProps {
-  activeTab: string
-  onTabChange: (tab: string) => void
-}
-
-export function AppSidebar({ activeTab, onTabChange }: AppSidebarProps) {
+export function AppSidebar() {
   const { user, logout } = useApp()
-
+  const pathname = usePathname() // 👈 Récupère l'URL courante (ex: /admin/services)
+  
   const filteredItems = navItems.filter(item => {
     if (!user) return item.roles.includes("visitor")
     return item.roles.includes(user.role)
   })
-const currentTab = activeTab === "" ? "/" : activeTab;
+
   return (
     <motion.aside
       initial={{ x: -280 }}
@@ -61,35 +58,41 @@ const currentTab = activeTab === "" ? "/" : activeTab;
       className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border bg-card lg:flex"
     >
       {/* Logo */}
-       <div className="flex flex-col items-center">
-              <img
-                src="/placeholder-logo.svg"
-                alt="Rang+"
-                className="h-8 w-auto cursor-pointer"
-              />
+      <div className="flex h-16 items-center gap-3 border-b border-border px-6">
+        <div className="flex size-10 items-center justify-center rounded-xl bg-emerald text-primary-foreground">
+          <Building2 className="size-5" />
+        </div>
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">Rang+</h1>
+          <p className="text-xs text-muted-foreground">Hôpital du Mali</p>
+        </div>
+      </div>
 
-              <span className="text-[11px] font-semibold text-[#1e293b]/70 italic tracking-tight mt-0.5">
-                Hôpital du Mali</span>
-            </div>
-
-      {/* Navigation */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-        {filteredItems.map((item) => (
-          <button
-            key={item.href}
-            onClick={() => onTabChange(item.href)}
-          className={cn(
-  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-  (item.href !== "/" && activeTab.includes(item.href)) ||
-  (item.href === "/" && !navItems.some(nav => nav.href !== "/" && activeTab.includes(nav.href)))
-    ? "bg-emerald text-primary-foreground font-semibold"
-    : "text-muted-foreground hover:bg-accent hover:text-foreground"
-)}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
+       {filteredItems.map((item) => {
+
+  const trueHref = item.href === "/profile" && user 
+    ? `/${user.role}/profile` 
+    : item.href
+
+  const isActive = pathname === trueHref
+
+  return (
+    <Link
+      key={item.href}
+      href={trueHref} 
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+        isActive
+          ? "bg-primary text-primary-foreground font-semibold"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+      )}
+    >
+      {item.icon}
+      {item.label}
+    </Link>
+  )
+})}
       </nav>
 
       <Separator />

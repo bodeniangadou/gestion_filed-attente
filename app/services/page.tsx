@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
-import { useApp, Service } from "@/lib/app-context"
+// import { useApp, Service } from 
+import { useApp, Service } from "@/lib/app-context"     
 
 const iconMap: Record<string, React.ReactNode> = {
   "stethoscope": <Stethoscope className="size-6" />,
@@ -24,7 +25,7 @@ interface ServicesViewProps {
   isAdmin?: boolean
 }
 
-export function ServicesView({ isAdmin = false }: ServicesViewProps) {
+export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const { services, user, takeTicket } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedService, setSelectedService] = useState<Service | null>(null)

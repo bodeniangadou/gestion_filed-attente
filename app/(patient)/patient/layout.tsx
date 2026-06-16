@@ -1,38 +1,30 @@
 "use client"
-import { ReactNode } from "react"
-import { usePathname, useRouter } from "next/navigation"
+
+import { useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { BottomNav } from "@/components/bottom-nav"
 import { useApp } from "@/lib/app-context" 
 import { UserX } from "lucide-react"
 import { Card } from "@/components/ui/card"
 
-export default function PatientLayout({ children }: { children: ReactNode }) {
-  const pathname = usePathname()
-  const router = useRouter()
+export default function PatientLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+
+  const [activeTab, setActiveTab] = useState("home")
+  
   const { user } = useApp()
 
-  
-  const getActiveTab = () => {
-    if (pathname === "/patient") return "home"
-    return pathname.replace("/patient/", "")
-  }
-
-  const activeTab = getActiveTab()
-
   const handleTabChange = (tab: string) => {
-    if (tab === "home") {
-      router.push("/patient")
-    } else {
-      router.push(`/patient/${tab}`)
-    }
+    setActiveTab(tab)
   }
 
   const handleTakeTicket = () => {
-    router.push("/patient/services")
+    setActiveTab("take-ticket")
   }
 
-  // Sécurité d'accès
   if (!user || (user.role !== "patient" && user.role !== "visitor")) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
@@ -54,7 +46,6 @@ export default function PatientLayout({ children }: { children: ReactNode }) {
       <main className="flex-1 bg-background pb-20 lg:pb-0 lg:pl-64"> 
         {children}
       </main>
-
       <BottomNav 
         activeTab={activeTab} 
         onTabChange={handleTabChange} 

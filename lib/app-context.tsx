@@ -91,15 +91,18 @@ interface AppContextType {
   hospitalSettings: HospitalSettings
   setHospitalSettings: (settings: HospitalSettings) => void
   
+  // Auth
   loginAsRole: (role: UserRole, name?: string, firstName?: string, email?: string) => void
   loginAsAgent: (agent: Agent) => void
   logout: () => void
   
+  // Patient actions
   takeTicket: (service: Service, name: string, firstName: string) => Ticket
   cancelTicket: (ticketId: string) => void
   getPatientHistory: () => Ticket[]
   getActiveTickets: () => Ticket[]
   
+  // Agent actions
   getCurrentAgent: () => Agent | null
   getAgentCounter: () => Counter | null
   getAgentQueue: () => Ticket[]
@@ -136,7 +139,7 @@ const defaultServices: Service[] = [
   { id: "s2", name: "Urgences", description: "Services d'urgence 24h/24", icon: "siren", waitTime: 5, currentQueue: 3, isActive: true, openTime: "00:00", closeTime: "23:59" },
   { id: "s3", name: "Radiologie", description: "Imagerie medicale et radiographie", icon: "scan", waitTime: 25, currentQueue: 8, isActive: true, openTime: "08:00", closeTime: "17:00" },
   { id: "s4", name: "Laboratoire", description: "Analyses et prelevements", icon: "flask", waitTime: 20, currentQueue: 15, isActive: true, openTime: "07:00", closeTime: "18:00" },
-  { id: "s5", name: "Pharmacie", description: "Retrait de medicaments", icon: "pill", waitTime: 10, currentQueue: 6, isActive: false, openTime: "08:00", closeTime: "20:00" },
+  { id: "s5", name: "Pharmacie", description: "Retrait de medicaments", icon: "pill", waitTime: 10, currentQueue: 6, isActive: true, openTime: "08:00", closeTime: "20:00" },
   { id: "s6", name: "Cardiologie", description: "Consultations cardiaques", icon: "heart-pulse", waitTime: 30, currentQueue: 4, isActive: false, openTime: "09:00", closeTime: "16:00" },
 ]
 
@@ -515,32 +518,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-useEffect(() => {
-  const testAgent = defaultAgents.find(a => a.id === "a1");
-  if (testAgent) {
+  useEffect(() => {
     setUser({
-      id: testAgent.id,
-      name: testAgent.name,
-      firstName: testAgent.firstName,
-      email: testAgent.email,
-      role: "agent"
+      id: "admin1",
+      name: "Admin",
+      firstName: "Super",
+      email: "admin@hopitalmali.ml",
+      role: "admin",
     });
-    
-    setCounters(prev => prev.map(c => 
-      c.id === "c1" ? { ...c, isActive: true, agentId: testAgent.id } : c
-    ));
-  }
-}, []);
-useEffect(() => {
-  // Connexion automatique en tant que Patient pour les tests
-  setUser({
-    id: "p-bode",
-    name: "Niangadou",
-    firstName: "Bode",
-    email: "bode@test.com",
-    role: "patient" // On force le rôle patient ici
-  });
-}, []);
+  }, []);
   return (
     <AppContext.Provider
       value={{
