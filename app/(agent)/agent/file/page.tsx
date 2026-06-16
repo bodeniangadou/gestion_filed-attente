@@ -3,13 +3,13 @@
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 
-import { FileTabs } from "@/components/file/FileTabs"
-import { FileFilters } from "@/components/file/FileFilters"
-import { QueueTable } from "@/components/file/QueueTable"
-import { HistoryTable } from "@/components/file/HistoryTable"
-import { AbsentTable } from "@/components/file/AbsentTable"
-import { NextPatient } from "@/components/file/NextPatient"
-import { QuickHistory } from "@/components/file/QuickHistory"
+import { FileTabs } from "@/components/ui/file/FileTabs"
+import { FileFilters } from "@/components/ui/file/FileFilters"
+import { QueueTable } from "@/components/ui/file/QueueTable"
+import { HistoryTable } from "@/components/ui/file/HistoryTable"
+import { AbsentTable } from "@/components/ui/file/AbsentTable"
+import { NextPatient } from "@/components/ui/file/NextPatient"
+import { QuickHistory } from "@/components/ui/file/QuickHistory"
 
 export default function FilePage() {
   const searchParams = useSearchParams()

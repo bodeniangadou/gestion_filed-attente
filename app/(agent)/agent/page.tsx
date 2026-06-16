@@ -7,11 +7,11 @@ import {
   UserX,
 } from "lucide-react"
 
-import { StatsCard } from "@/components/dashbord/StatsCard"
-import { CounterStatus } from "@/components/dashbord/CounterStatus"
-import { RecentActivities } from "@/components/dashbord/RecentActivities"
-import { TicketsDistribution } from "@/components/dashbord/TicketsDistribution"
-import { DailyEvolution } from "@/components/dashbord/DailyEvolution"
+import { StatsCard } from "@/components/ui/dashbord/StatsCard"
+import { CounterStatus } from "@/components/ui/dashbord/CounterStatus"
+import { RecentActivities } from "@/components/ui/dashbord/RecentActivities"
+import { TicketsDistribution } from "@/components/ui/dashbord/TicketsDistribution"
+import { DailyEvolution } from "@/components/ui/dashbord/DailyEvolution"
 import { useRouter } from "next/navigation"
 
 export default function DashboardPage() {
