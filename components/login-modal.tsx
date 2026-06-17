@@ -35,7 +35,7 @@ interface LoginModalProps {
   onSuccess: () => void
 }
 
-type AuthMode = "login" | "register" | "role-select"
+type AuthMode = "login" | "register" | "role-select" 
 
 export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   const { setUser } = useApp()

@@ -1,30 +1,30 @@
-"use client";
+"use client"
 
-import { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Camera, User, Phone, LogOut, Check, UserCheck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { Field, FieldLabel, FieldGroup } from "@/components/ui/field";
-import { Separator } from "@/components/ui/separator";
-import { useApp } from "@/lib/app-context";
-import Link from "next/link";
+import { useState, useRef, useEffect } from "react"
+import { motion } from "framer-motion"
+import { Camera, User, Phone, LogOut, Check, UserCheck } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
+import { Separator } from "@/components/ui/separator"
+import { useApp } from "@/lib/app-context"
+import Link from "next/link"
 
 export default function ProfileView() {
-  const { user, setUser, logout } = useApp(); // Enlevé loginAsRole qui ne sert plus ici
-  const [isEditing, setIsEditing] = useState(false);
-
+  const { user, setUser, logout } = useApp() // Enlevé loginAsRole qui ne sert plus ici
+  const [isEditing, setIsEditing] = useState(false)
+  
   const [formData, setFormData] = useState({
     name: "",
     firstName: "",
     phone: "",
-  });
-
-  const [showSaved, setShowSaved] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  })
+  
+  const [showSaved, setShowSaved] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (user) {
@@ -32,9 +32,9 @@ export default function ProfileView() {
         name: user.name || "",
         firstName: user.firstName || "",
         phone: user.phone || "",
-      });
+      })
     }
-  }, [user]);
+  }, [user])
 
   const handleSave = () => {
     if (user) {
@@ -43,12 +43,12 @@ export default function ProfileView() {
         name: formData.name,
         firstName: formData.firstName,
         phone: formData.phone,
-      });
+      })
     }
-    setIsEditing(false);
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 2000);
-  };
+    setIsEditing(false)
+    setShowSaved(true)
+    setTimeout(() => setShowSaved(false), 2000)
+  }
 
   const handleCancel = () => {
     if (user) {
@@ -56,38 +56,38 @@ export default function ProfileView() {
         name: user.name || "",
         firstName: user.firstName || "",
         phone: user.phone || "",
-      });
+      })
     }
-    setIsEditing(false);
-  };
+    setIsEditing(false)
+  }
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0]
     if (file && user) {
-      const reader = new FileReader();
+      const reader = new FileReader()
       reader.onload = (e) => {
         setUser({
           ...user,
           photo: e.target?.result as string,
-        });
-      };
-      reader.readAsDataURL(file);
+        })
+      }
+      reader.readAsDataURL(file)
     }
-  };
+  }
 
   const roleLabels: Record<string, string> = {
     visitor: "Visiteur",
     patient: "Patient",
     agent: "Agent",
     admin: "Super Admin",
-  };
+  }
 
   // ─── SI AUCUN UTILISATEUR N'EST CONNECTÉ (Fini la démo !) ───
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6 pb-24 lg:pb-8">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }} 
           animate={{ opacity: 1, scale: 1 }}
           className="w-full max-w-md text-center space-y-4"
         >
@@ -95,22 +95,17 @@ export default function ProfileView() {
             <UserCheck className="size-8 text-muted-foreground" />
           </div>
           <div className="space-y-1">
-            <h2 className="text-xl font-bold tracking-tight text-foreground">
-              Session expirée
-            </h2>
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Session expirée</h2>
             <p className="text-sm text-muted-foreground">
               Veuillez vous connecter pour accéder à votre espace personnel.
             </p>
           </div>
-          <Button
-            asChild
-            className="w-full h-11 bg-primary text-primary-foreground"
-          >
+          <Button asChild className="w-full h-11 bg-primary text-primary-foreground">
             <Link href="/">Retour à l'accueil</Link>
           </Button>
         </motion.div>
       </div>
-    );
+    )
   }
 
   // ─── ÉCRAN DU PROFIL CONNECTÉ ───
@@ -121,16 +116,10 @@ export default function ProfileView() {
         <div className="mx-auto flex max-w-2xl items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-foreground">Mon Profil</h1>
-            <p className="text-sm text-muted-foreground">
-              Gérer vos informations personnelles
-            </p>
+            <p className="text-sm text-muted-foreground">Gérer vos informations personnelles</p>
           </div>
           {!isEditing && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsEditing(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setIsEditing(true)}>
               Modifier
             </Button>
           )}
@@ -152,7 +141,7 @@ export default function ProfileView() {
         )}
 
         {/* Avatar Section */}
-        <motion.div
+        <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8 flex flex-col items-center"
@@ -161,8 +150,7 @@ export default function ProfileView() {
             <Avatar className="size-24 border-4 border-emerald shadow-sm">
               <AvatarImage src={user.photo} />
               <AvatarFallback className="bg-emerald text-2xl font-bold text-primary-foreground">
-                {user.firstName?.charAt(0)}
-                {user.name?.charAt(0)}
+                {user.firstName?.charAt(0)}{user.name?.charAt(0)}
               </AvatarFallback>
             </Avatar>
             <button
@@ -198,9 +186,7 @@ export default function ProfileView() {
                 </FieldLabel>
                 <Input
                   value={formData.firstName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, firstName: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                   disabled={!isEditing}
                   className="h-11 bg-background disabled:bg-muted/40 disabled:text-muted-foreground"
                 />
@@ -213,9 +199,7 @@ export default function ProfileView() {
                 </FieldLabel>
                 <Input
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   disabled={!isEditing}
                   className="h-11 bg-background disabled:bg-muted/40 disabled:text-muted-foreground"
                 />
@@ -228,9 +212,7 @@ export default function ProfileView() {
                 </FieldLabel>
                 <Input
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                   disabled={!isEditing}
                   placeholder="+223 XX XX XX XX"
                   className="h-11 bg-background disabled:bg-muted/40 disabled:text-muted-foreground"
@@ -240,14 +222,14 @@ export default function ProfileView() {
 
             {isEditing && (
               <div className="mt-6 flex gap-3">
-                <Button
-                  variant="outline"
+                <Button 
+                  variant="outline" 
                   className="flex-1 h-11"
                   onClick={handleCancel}
                 >
                   Annuler
                 </Button>
-                <Button
+                <Button 
                   className="flex-1 h-11 bg-emerald text-primary-foreground hover:bg-emerald/90"
                   onClick={handleSave}
                 >
@@ -259,9 +241,9 @@ export default function ProfileView() {
         </Card>
 
         <Separator className="my-6 border-border/60" />
-
-        <Button
-          variant="outline"
+        
+        <Button 
+          variant="outline" 
           className="w-full h-11 gap-2 text-destructive border-destructive/20 hover:bg-destructive hover:text-destructive-foreground transition-all font-medium"
           onClick={logout}
         >
@@ -270,5 +252,5 @@ export default function ProfileView() {
         </Button>
       </div>
     </div>
-  );
+  )
 }

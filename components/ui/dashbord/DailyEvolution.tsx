@@ -6,6 +6,9 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  Tooltip,
+  Area,
+  AreaChart,
   ResponsiveContainer,
 } from "recharts"
 
@@ -25,68 +28,55 @@ const data = [
 
 export function DailyEvolution() {
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 h-[420px]">
-
-      <h2 className="text-2xl font-bold text-gray-900 mb-8">
-        Évolution du jour
-      </h2>
-
-      <div className="h-[260px]">
-
-        <ResponsiveContainer width="100%" height="100%">
-
-          <LineChart
-            data={data}
-            margin={{
-              top: 15,
-              right: 20,
-              left: 20,
-              bottom: 15,
-            }}
-          >
-
-            <CartesianGrid
-              strokeDasharray="3 3"
-              vertical={false}
-            />
-
-            <XAxis
-              dataKey="heure"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={12}
-            />
-
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              tickMargin={12}
-            />
-
-            <Line
-              type="monotone"
-              dataKey="tickets"
-              stroke="#2563eb"
-              strokeWidth={3}
-              dot={{ r: 3 }}
-            />
-
-          </LineChart>
-
-        </ResponsiveContainer>
-
-      </div>
-
-      <div className="mt-6 flex items-center gap-2">
-
-        <div className="w-4 h-1 bg-blue-600 rounded-full" />
-
-        <span className="text-sm font-medium text-gray-600">
-          Tickets traités
+    <div className="bg-card rounded-xl border border-border shadow-sm p-6 h-[400px] flex flex-col">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-lg font-bold text-foreground">Évolution du jour</h2>
+        <span className="text-xs text-muted-foreground bg-secondary px-2 py-1 rounded-md">
+          Aujourd'hui
         </span>
-
       </div>
 
+      <div className="flex-1 min-h-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorTickets" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
+                <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+            <XAxis 
+              dataKey="heure" 
+              tickLine={false} 
+              axisLine={false} 
+              fontSize={12} 
+              tick={{ fill: "hsl(var(--muted-foreground))" }}
+            />
+            <YAxis 
+              tickLine={false} 
+              axisLine={false} 
+              fontSize={12} 
+              tick={{ fill: "hsl(var(--muted-foreground))" }}
+            />
+            <Tooltip 
+              contentStyle={{ 
+                borderRadius: '8px', 
+                border: 'none', 
+                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+              }}
+            />
+            <Area 
+              type="monotone" 
+              dataKey="tickets" 
+              stroke="#2563eb" 
+              strokeWidth={3} 
+              fillOpacity={1} 
+              fill="url(#colorTickets)" 
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }
