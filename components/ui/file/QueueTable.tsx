@@ -206,5 +206,6 @@ export function QueueTable({ search }: QueueTableProps) {
         onPageChange={setCurrentPage}
       />
     </div>
+    
   )
 }
