@@ -5,14 +5,9 @@ import { motion } from "framer-motion"
 import { 
   Plus, 
   Search, 
-  MoreVertical, 
   Edit, 
   Trash2, 
-  Power, 
-  Clock,
-  Users,
   QrCode,
-  ArrowLeft,
   Stethoscope,
   Siren,
   ScanLine,
@@ -21,11 +16,13 @@ import {
   HeartPulse,
   Eye,
   Brain,
-  Bone
+  Bone,
+  Printer,
+  Users
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { QRCodeSVG } from "qrcode.react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -35,20 +32,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { useApp, Service } from "@/lib/app-context"
 
-interface AdminServicesViewProps {
-  onBack: () => void
-}
-
 const iconOptions = [
-  { value: "stethoscope", label: "Stethoscope", icon: Stethoscope },
+  { value: "stethoscope", label: "Stéthoscope", icon: Stethoscope },
   { value: "siren", label: "Urgences", icon: Siren },
   { value: "scan", label: "Radiologie", icon: ScanLine },
   { value: "flask", label: "Laboratoire", icon: FlaskConical },
@@ -56,7 +43,7 @@ const iconOptions = [
   { value: "heart-pulse", label: "Cardiologie", icon: HeartPulse },
   { value: "eye", label: "Ophtalmologie", icon: Eye },
   { value: "brain", label: "Neurologie", icon: Brain },
-  { value: "bone", label: "Orthopedie", icon: Bone },
+  { value: "bone", label: "Orthopédie", icon: Bone },
 ]
 
 const getIconComponent = (iconName: string) => {
@@ -64,18 +51,18 @@ const getIconComponent = (iconName: string) => {
   return found ? found.icon : Stethoscope
 }
 
-export function AdminServicesView({ onBack }: AdminServicesViewProps) {
+export function AdminServicesView() {
   const { services, counters, tickets, createService, updateService, deleteService } = useApp()
   
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
+  const [qrCodeService, setQrCodeService] = useState<Service | null>(null)
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     icon: "stethoscope",
-    openTime: "08:00",
-    closeTime: "17:00",
     isActive: true
   })
 
@@ -86,6 +73,9 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
   const handleCreate = () => {
     createService({
       ...formData,
+      openTime: "08:00",
+      isActive: false, 
+      closeTime: "17:00",
       waitTime: 15,
       currentQueue: 0
     })
@@ -102,7 +92,7 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
   }
 
   const handleDelete = (id: string) => {
-    if (confirm("Etes-vous sur de vouloir supprimer ce service ?")) {
+    if (confirm("Êtes-vous sûr de vouloir supprimer ce service ?")) {
       deleteService(id)
     }
   }
@@ -112,8 +102,6 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
       name: "",
       description: "",
       icon: "stethoscope",
-      openTime: "08:00",
-      closeTime: "17:00",
       isActive: true
     })
   }
@@ -124,133 +112,115 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
       name: service.name,
       description: service.description,
       icon: service.icon,
-      openTime: service.openTime,
-      closeTime: service.closeTime,
       isActive: service.isActive
     })
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* Header */}
-      <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={onBack}>
-              <ArrowLeft className="size-5" />
-            </Button>
-            <div>
-              <h1 className="text-lg font-bold text-foreground">Gestion des Services</h1>
-              <p className="text-sm text-muted-foreground">{services.length} services configures</p>
-            </div>
+    <div className="min-h-screen bg-background pb-12">
+      {/* Header compact */}
+      <div className="border-b border-border bg-card px-6 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
+          <div>
+            <h1 className="text-lg font-bold tracking-tight text-foreground">Services Médicaux</h1>
+            <p className="text-xs text-muted-foreground">{services.length} départements configurés</p>
           </div>
-          <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-            <Plus className="size-4" />
-            <span className="hidden sm:inline">Nouveau service</span>
+          <Button onClick={() => setShowCreateModal(true)} size="sm" className="gap-1.5 bg-primary text-primary-foreground text-xs h-9">
+            <Plus className="size-3.5" />
+            Nouveau service
           </Button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl p-6">
-        {/* Search */}
-        <div className="mb-6 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+      <div className="mx-auto max-w-5xl p-6">
+        {/* Barre de recherche */}
+        <div className="mb-4 relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
             placeholder="Rechercher un service..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-9 h-9 text-xs bg-card"
           />
         </div>
 
-        {/* Services Grid */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Grille de Cartes Ultra-Compactes */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredServices.map((service, index) => {
             const Icon = getIconComponent(service.icon)
-            const serviceCounters = counters.filter(c => c.serviceId === service.id)
-            const activeCounters = serviceCounters.filter(c => c.isActive)
-            const queueCount = tickets.filter(t => 
-              t.service.id === service.id && t.status === "waiting"
-            ).length
+            const queueCount = tickets.filter(t => t.service.id === service.id && t.status === "waiting").length
 
             return (
               <motion.div
                 key={service.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                transition={{ delay: index * 0.02 }}
               >
-                <Card className={`relative overflow-hidden ${!service.isActive ? "opacity-60" : ""}`}>
-                  <div className={`absolute top-0 left-0 w-1 h-full ${service.isActive ? "bg-primary" : "bg-muted-foreground"}`} />
-                  
-                  <CardContent className="p-5">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`flex size-12 items-center justify-center rounded-xl ${service.isActive ? "bg-primary/10" : "bg-muted"}`}>
-                          <Icon className={`size-6 ${service.isActive ? "text-primary" : "text-muted-foreground"}`} />
+                <Card className={`overflow-hidden border border-border/60 shadow-sm transition-all hover:border-primary/20 bg-card ${!service.isActive ? "opacity-60" : ""}`}>
+                  <CardContent className="p-3.5 flex flex-col justify-between h-full min-h-[130px]">
+                    
+                    {/* Partie Haute: Icône, Titre, Switch */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <Icon className="size-4" />
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-foreground">{service.name}</h3>
-                          <p className="text-xs text-muted-foreground">{service.description}</p>
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-foreground text-sm truncate tracking-tight">{service.name}</h3>
+                          <p className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{service.description}</p>
                         </div>
                       </div>
-                      
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="size-8">
-                            <MoreVertical className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditModal(service)}>
-                            <Edit className="size-4 mr-2" />
-                            Modifier
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <QrCode className="size-4 mr-2" />
-                            Generer QR
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-red-600"
-                            onClick={() => handleDelete(service.id)}
-                          >
-                            <Trash2 className="size-4 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <Switch 
+                        checked={service.isActive}
+                        onCheckedChange={(checked) => updateService(service.id, { isActive: checked })}
+                        className="scale-75 origin-top-right"
+                      />
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 mb-4 text-center">
-                      <div className="p-2 bg-accent/50 rounded-lg">
-                        <p className="text-lg font-bold text-foreground">{queueCount}</p>
-                        <p className="text-[10px] text-muted-foreground">En attente</p>
+                    {/* Partie Milieu: Badge File d'attente mini */}
+                    <div className="mt-2.5 flex items-center justify-between px-2 py-1 rounded-md bg-muted/50 border border-border/20">
+                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <Users className="size-3" />
+                        <span>En attente :</span>
                       </div>
-                      <div className="p-2 bg-accent/50 rounded-lg">
-                        <p className="text-lg font-bold text-foreground">{activeCounters.length}</p>
-                        <p className="text-[10px] text-muted-foreground">Guichets</p>
-                      </div>
-                      <div className="p-2 bg-accent/50 rounded-lg">
-                        <p className="text-lg font-bold text-foreground">~{service.waitTime}</p>
-                        <p className="text-[10px] text-muted-foreground">min</p>
+                      <span className="font-mono font-bold text-xs text-foreground bg-background px-1.5 py-0.5 rounded border border-border/30 shadow-2xs">
+                        {queueCount}
+                      </span>
+                    </div>
+
+                    {/* Partie Basse: Actions discrètes */}
+                    <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/40">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setQrCodeService(service)}
+                        className="h-7 px-2 text-[11px] font-medium text-primary hover:bg-primary/5 gap-1"
+                      >
+                        <QrCode className="size-3" />
+                        Code QR
+                      </Button>
+
+                      <div className="flex items-center">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="size-7 text-muted-foreground hover:text-foreground"
+                          onClick={() => openEditModal(service)}
+                        >
+                          <Edit className="size-3.5" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="size-7 text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDelete(service.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="size-3" />
-                        {service.openTime} - {service.closeTime}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {service.isActive ? "Actif" : "Ferme"}
-                        </span>
-                        <Switch 
-                          checked={service.isActive}
-                          onCheckedChange={(checked) => updateService(service.id, { isActive: checked })}
-                        />
-                      </div>
-                    </div>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -259,14 +229,13 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
         </div>
 
         {filteredServices.length === 0 && (
-          <div className="text-center py-12">
-            <Stethoscope className="mx-auto size-16 text-muted-foreground/30 mb-4" />
-            <p className="text-muted-foreground">Aucun service trouve</p>
+          <div className="text-center py-8 text-muted-foreground text-xs">
+            Aucun service trouvé.
           </div>
         )}
       </div>
 
-      {/* Create/Edit Modal */}
+      {/* Modale de création / Édition */}
       <Dialog 
         open={showCreateModal || !!editingService} 
         onOpenChange={(open) => {
@@ -279,41 +248,35 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editingService ? "Modifier le service" : "Nouveau service"}
+            <DialogTitle className="text-sm font-bold">
+              {editingService ? "Modifier le service" : "Ajouter un service"}
             </DialogTitle>
-            <DialogDescription>
-              {editingService 
-                ? "Modifiez les informations du service" 
-                : "Creez un nouveau service medical"
-              }
-            </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 py-1 text-xs">
             <div>
-              <label className="text-sm font-medium text-foreground">Nom du service</label>
+              <label className="font-medium text-muted-foreground uppercase text-[10px]">Nom du service</label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ex: Pediatrie"
-                className="mt-1"
+                placeholder="Ex: Pédiatrie"
+                className="mt-1 h-9 text-xs"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground">Description</label>
+              <label className="font-medium text-muted-foreground uppercase text-[10px]">Description</label>
               <Input
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Ex: Soins pour enfants"
-                className="mt-1"
+                placeholder="Ex: Consultations enfants"
+                className="mt-1 h-9 text-xs"
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-foreground">Icone</label>
-              <div className="grid grid-cols-5 gap-2 mt-2">
+              <label className="font-medium text-muted-foreground uppercase text-[10px]">Icône</label>
+              <div className="grid grid-cols-5 gap-1.5 mt-1.5">
                 {iconOptions.map((option) => {
                   const IconOption = option.icon
                   return (
@@ -321,13 +284,13 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
                       key={option.value}
                       type="button"
                       onClick={() => setFormData({ ...formData, icon: option.value })}
-                      className={`p-3 rounded-xl border-2 transition-colors ${
+                      className={`p-2 rounded-lg border transition-all ${
                         formData.icon === option.value 
-                          ? "border-primary bg-primary/10" 
-                          : "border-border hover:border-primary/30"
+                          ? "border-primary bg-primary/10 shadow-xs" 
+                          : "border-border/60 hover:border-primary/20"
                       }`}
                     >
-                      <IconOption className={`size-5 mx-auto ${
+                      <IconOption className={`size-4 mx-auto ${
                         formData.icon === option.value ? "text-primary" : "text-muted-foreground"
                       }`} />
                     </button>
@@ -335,60 +298,54 @@ export function AdminServicesView({ onBack }: AdminServicesViewProps) {
                 })}
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium text-foreground">Ouverture</label>
-                <Input
-                  type="time"
-                  value={formData.openTime}
-                  onChange={(e) => setFormData({ ...formData, openTime: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">Fermeture</label>
-                <Input
-                  type="time"
-                  value={formData.closeTime}
-                  onChange={(e) => setFormData({ ...formData, closeTime: e.target.value })}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between p-3 bg-accent/50 rounded-xl">
-              <div>
-                <p className="font-medium text-foreground">Service actif</p>
-                <p className="text-sm text-muted-foreground">Visible par les patients</p>
-              </div>
-              <Switch
-                checked={formData.isActive}
-                onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-              />
-            </div>
           </div>
 
-          <div className="flex gap-3">
-            <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={() => {
-                setShowCreateModal(false)
-                setEditingService(null)
-                resetForm()
-              }}
-            >
+          <div className="flex gap-2 pt-2">
+            <Button variant="outline" size="sm" className="flex-1 h-9 text-xs" onClick={() => { setShowCreateModal(false); setEditingService(null); resetForm(); }}>
               Annuler
             </Button>
-            <Button 
-              className="flex-1"
-              onClick={editingService ? handleUpdate : handleCreate}
-              disabled={!formData.name}
-            >
-              {editingService ? "Enregistrer" : "Creer"}
+            <Button size="sm" className="flex-1 h-9 text-xs bg-primary text-primary-foreground" onClick={editingService ? handleUpdate : handleCreate} disabled={!formData.name}>
+              {editingService ? "Enregistrer" : "Créer"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modale QR Code */}
+      <Dialog open={!!qrCodeService} onOpenChange={(open) => !open && setQrCodeService(null)}>
+        <DialogContent className="sm:max-w-xs text-center p-5">
+          <DialogHeader className="items-center">
+            <DialogTitle className="text-sm font-bold">Code QR Officiel</DialogTitle>
+            <DialogDescription className="text-xs font-semibold text-primary">
+              {qrCodeService?.name}
+            </DialogDescription>
+          </DialogHeader>
+
+          {qrCodeService && (
+            <div className="flex flex-col items-center justify-center gap-4 py-1">
+              <div className="border border-border p-4 rounded-xl bg-white shadow-xs flex flex-col items-center justify-center">
+                <QRCodeSVG 
+                  value={qrCodeService.name} 
+                  size={140}
+                  level="H"
+                />
+                <p className="text-[11px] font-bold font-mono text-slate-800 mt-3 uppercase tracking-wider">
+                  {qrCodeService.name}
+                </p>
+                <p className="text-[9px] text-slate-400 font-medium mt-0.5">Rang+ • Hôpital du Mali</p>
+              </div>
+              
+              <Button 
+                onClick={() => window.print()} 
+                variant="outline" 
+                size="sm"
+                className="w-full gap-1.5 h-9 border-border text-xs text-foreground"
+              >
+                <Printer className="size-3.5" />
+                Imprimer
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

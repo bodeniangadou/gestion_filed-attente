@@ -223,10 +223,7 @@ export  default function PatientDashboard({ onNavigate, onTakeTicket }: PatientD
 
                 {/* Actions */}
                 <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1 gap-2">
-                    <QrCode className="size-4" />
-                    QR Code
-                  </Button>
+                 
                   {selectedTicket.status === "waiting" && (
                     <Button 
                       variant="outline" 
