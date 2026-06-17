@@ -92,7 +92,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
     resetForm()
   }
 
-  
   const handleUpdate = () => {
     if (editingCounter) {
       const service = services.find(s => s.id === formData.serviceId)
@@ -134,7 +133,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
   }
 
   const openEditModal = (counter: Counter) => {
-    console.log("Edit fonctionne")
     setEditingCounter(counter)
     setFormData({
       name: counter.name,
@@ -243,21 +241,13 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                  onSelect={(e) => {
-                                    e.preventDefault()
-                                    openEditModal(counter)
-                                  }}
-                                >
+                              <DropdownMenuItem onClick={() => openEditModal(counter)}>
+                                <Edit className="size-4 mr-2" />
                                 Modifier
                               </DropdownMenuItem>
                               {counter.agentId ? (
-                                <DropdownMenuItem
-                                    onSelect={(e) => {
-                                      e.preventDefault()
-                                      setShowAssignModal(counter)
-                                    }}
-                                  >
+                                <DropdownMenuItem onClick={() => handleUnassign(counter)}>
+                                  <UserMinus className="size-4 mr-2" />
                                   Retirer l&apos;agent
                                 </DropdownMenuItem>
                               ) : (
@@ -266,13 +256,10 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                                   Assigner un agent
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem
-                                  className="text-red-600"
-                                  onSelect={(e) => {
-                                    e.preventDefault()
-                                    handleDelete(counter.id)
-                                  }}
-                                >
+                              <DropdownMenuItem 
+                                className="text-red-600"
+                                onClick={() => handleDelete(counter.id)}
+                              >
                                 <Trash2 className="size-4 mr-2" />
                                 Supprimer
                               </DropdownMenuItem>

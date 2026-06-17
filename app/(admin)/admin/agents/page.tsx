@@ -1,6 +1,7 @@
 "use client"
-import { AgentsView } from "@/components/views/agents-view"
 
-export default function AgentsPage() {
+import { AgentsView } from "@/components/views/agents-view" // Ajuste si ton fichier s'appelle différemment
+
+export default function AdminAgentsPage() {
   return <AgentsView />
 }

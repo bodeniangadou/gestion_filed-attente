@@ -518,15 +518,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-  useEffect(() => {
+useEffect(() => {
+  const testAgent = defaultAgents.find(a => a.id === "a1");
+  if (testAgent) {
     setUser({
-      id: "admin1",
-      name: "Admin",
-      firstName: "Super",
-      email: "admin@hopitalmali.ml",
-      role: "admin",
+      id: testAgent.id,
+      name: testAgent.name,
+      firstName: testAgent.firstName,
+      email: testAgent.email,
+      role: "agent"
     });
-  }, []);
+    
+    setCounters(prev => prev.map(c => 
+      c.id === "c1" ? { ...c, isActive: true, agentId: testAgent.id } : c
+    ));
+  }
+}, []);
   return (
     <AppContext.Provider
       value={{
