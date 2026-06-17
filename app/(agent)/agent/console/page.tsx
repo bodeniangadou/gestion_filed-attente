@@ -267,7 +267,7 @@ export default function ConsoleAppel() {
                 ) : (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <p className="text-white/80 text-2xl font-medium">
-                      ✨ Aucun patient
+                       Aucun patient
                     </p>
                     <p className="text-emerald-100 text-sm mt-1">
                       Appuyez sur « Suivant »
@@ -287,14 +287,7 @@ export default function ConsoleAppel() {
                   <Phone size={22} />
                   <span className="text-xs">Suivant</span>
                 </button>
-                <button
-                  onClick={demarrerConsultation}
-                  disabled={!patientActuel || consultationActive}
-                  className="flex flex-col items-center gap-2 py-4 rounded-xl bg-teal-500 text-white shadow-md hover:bg-teal-700 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
-                >
-                  <Play size={20} />
-                  <span className="text-xs">Démarrer</span>
-                </button>
+                
                 <button
                   onClick={rappeler}
                   disabled={!patientActuel}
