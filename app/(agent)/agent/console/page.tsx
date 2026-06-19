@@ -70,7 +70,7 @@ const [patientActuel, setPatientActuel] = useState<Ticket | null>(null);
   const [nbTraites, setNbTraites] = useState(0);
 
   const [consultationActive, setConsultationActive] = useState(false);
-  const [debutConsultation, setDebutConsultation] = useState(null);
+const [debutConsultation, setDebutConsultation] = useState<number | null>(null);
 const [dureeConsultationReelle, setDureeConsultationReelle] = useState<number | null>(0);
   const [modalPriorite, setModalPriorite] = useState(false);
   const [numeroPriorite, setNumeroPriorite] = useState("");
@@ -88,9 +88,7 @@ useEffect(() => {
 }, []);
 
   useEffect(() => {
-  // Utilise ReturnType<typeof setInterval> pour être précis et éviter les erreurs de type
-  let intervalle: ReturnType<typeof setInterval> | undefined;
-
+   let intervalle: ReturnType<typeof setInterval> | undefined;
   if (consultationActive && debutConsultation) {
     intervalle = setInterval(() => {
       setDureeConsultationReelle(
@@ -99,7 +97,6 @@ useEffect(() => {
     }, 1000);
   }
 
-  // Le nettoyage est crucial ici pour éviter que l'intervalle ne tourne en boucle
   return () => {
     if (intervalle) clearInterval(intervalle);
   };
@@ -114,9 +111,7 @@ useEffect(() => {
   }
 };
 
-  // Assure-toi d'avoir accès à ton interface 'Ticket'
 const annoncerPatient = (ticket: Ticket) => {
-  // TypeScript connaît maintenant toutes les propriétés de ticket
   const phrase = `Ticket ${ticket.number}, veuillez vous présenter au guichet ${ticket.counterName || "disponible"}.`;
   parler(phrase);
 };
@@ -148,7 +143,7 @@ const annoncerPatient = (ticket: Ticket) => {
 
   const marquerAbsent = () => {
     if (!patientActuel) return;
-    if (confirm(`Absent·e : ${patientActuel.nom} ?`)) {
+    if (confirm(`Absent·e : ${patientActuel.userName} ?`)) {
       setPatientActuel(null);
       setConsultationActive(false);
       setDebutConsultation(null);
@@ -170,7 +165,7 @@ const annoncerPatient = (ticket: Ticket) => {
       arrivee: Date.now(),
       prioritaire: false,
     };
-    setFileAttente([...fileAttente, repousse]);
+    setFileAttente([...fileAttente, repousse as Ticket]);
     setPatientActuel(null);
     setConsultationActive(false);
     setDebutConsultation(null);
@@ -257,10 +252,10 @@ const annoncerPatient = (ticket: Ticket) => {
                     <div className="flex flex-col sm:flex-row sm:justify-between gap-4">
                       <div>
                         <span className="text-6xl font-black text-white">
-                          {patientActuel.numero}
+                          {patientActuel.number}
                         </span>
                         <p className="text-white text-xl font-semibold mt-2">
-                          {patientActuel.nom}
+                          {patientActuel.userName}
                         </p>
                       </div>
                       <div className="flex gap-3">
@@ -269,7 +264,7 @@ const annoncerPatient = (ticket: Ticket) => {
                             <Timer size={14} /> consultation
                           </div>
                           <span className="text-white text-xl font-mono">
-                            {formaterDuree(dureeConsultationReelle)}
+{formaterDuree(dureeConsultationReelle ?? 0)}
                           </span>
                         </div>
                       </div>
@@ -358,7 +353,7 @@ const annoncerPatient = (ticket: Ticket) => {
                         <span className="bg-emerald-100 px-2 py-0.5 rounded-full text-emerald-700 text-xs mr-2">
                           ANNONCE VOCALE
                         </span>
-                        Ticket <strong>{patientActuel.numero}</strong>, veuillez
+                        Ticket <strong>{patientActuel.number}</strong>, veuillez
                         vous présenter au guichet A1
                       </p>
                       <div className="w-full bg-emerald-200 rounded-full h-1 mt-2 overflow-hidden">
