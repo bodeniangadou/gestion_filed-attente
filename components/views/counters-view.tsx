@@ -15,7 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useApp } from "@/lib/app-context"
 import { Counter } from "@/lib/types" 
 
-export function CountersView() {
+export   function CountersView() {
   const { counters, setCounters, services, agents } = useApp()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCounter, setNewCounter] = useState({ name: "", serviceId: "", agentId: "" })

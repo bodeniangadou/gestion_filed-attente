@@ -82,7 +82,6 @@ export default function ProfileView() {
     admin: "Super Admin",
   }
 
-  // ─── SI AUCUN UTILISATEUR N'EST CONNECTÉ (Fini la démo !) ───
   if (!user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6 pb-24 lg:pb-8">
@@ -107,8 +106,6 @@ export default function ProfileView() {
       </div>
     )
   }
-
-  // ─── ÉCRAN DU PROFIL CONNECTÉ ───
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
       {/* Header */}

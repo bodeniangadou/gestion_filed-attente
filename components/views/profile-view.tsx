@@ -12,7 +12,7 @@ import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
 import { Separator } from "@/components/ui/separator"
 import { useApp } from "@/lib/app-context"
 
-export function ProfileView() {
+export   function ProfileView() {
   const { user, setUser, logout, loginAsRole } = useApp()
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState({

@@ -51,7 +51,7 @@ const getIconComponent = (iconName: string) => {
   return found ? found.icon : Stethoscope
 }
 
-export function AdminServicesView() {
+export  function AdminServicesView() {
   const { services, counters, tickets, createService, updateService, deleteService } = useApp()
   
   const [searchQuery, setSearchQuery] = useState("")

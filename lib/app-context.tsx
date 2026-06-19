@@ -518,15 +518,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-  useEffect(() => {
-    setUser({
-      id: "admin1",
-      name: "Admin",
-      firstName: "Super",
-      email: "admin@hopitalmali.ml",
-      role: "admin",
-    });
-  }, []);
+  // useEffect(() => {
+  //   setUser({
+  //     id: "admin1",
+  //     name: "Admin",
+  //     firstName: "Super",
+  //     email: "admin@hopitalmali.ml",
+  //     role: "admin",
+  //   });
+  // }, []);
   return (
     <AppContext.Provider
       value={{

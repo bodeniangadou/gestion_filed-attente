@@ -6,37 +6,15 @@ import { BottomNav } from "@/components/bottom-nav";
 import { useApp } from "@/lib/app-context";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, Bell, User } from "lucide-react";
 
-export default function AgentLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { getCurrentAgent, getAgentCounter } = useApp();
-  const [agent, setAgent] = useState(null);
-  const [counter, setCounter] = useState(null);
+export default function AgentLayout({ children }: { children: React.ReactNode }) {
+  const { user, getCurrentAgent, getAgentCounter } = useApp();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    let agentData = getCurrentAgent();
-    let counterData = getAgentCounter();
-
-    if (!agentData || !counterData) {
-      const savedAgent = localStorage.getItem("agent");
-      const savedCounter = localStorage.getItem("counter");
-      if (savedAgent && savedCounter) {
-        agentData = JSON.parse(savedAgent);
-        counterData = JSON.parse(savedCounter);
-      }
-    }
-
-    setAgent(agentData);
-    setCounter(counterData);
+    // On attend juste que le système vérifie l'utilisateur
     setIsLoading(false);
-  }, [getCurrentAgent, getAgentCounter]);
+  }, []);
 
   if (isLoading) {
     return (
@@ -46,33 +24,21 @@ export default function AgentLayout({
     );
   }
 
-  if (!agent || !counter) {
+  // SÉCURITÉ : Bloque uniquement si l'utilisateur n'est pas un agent
+  if (!user || user.role !== "agent") {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
-        <Card className="max-w-md w-full text-center p-8 border border-border shadow-xl bg-card">
-          <AlertTriangle className="mx-auto size-16 text-amber-500 mb-4" />
-          <h2 className="text-xl font-bold text-foreground mb-2">
-            Aucun guichet assigné
-          </h2>
-          <p className="text-muted-foreground mb-4">
-            Vous n'êtes pas assigné à un guichet actif pour l'Hôpital du Mali.
-          </p>
-          <p className="text-xs text-destructive font-medium bg-destructive/10 p-3 rounded-lg">
-            L'accès est bloqué. Veuillez contacter votre administrateur.
-          </p>
+        <Card className="max-w-md w-full text-center p-8">
+          <h2 className="text-xl font-bold">Accès non autorisé</h2>
+          <p>Vous devez être connecté en tant qu'agent pour accéder à cette zone.</p>
         </Card>
       </div>
     );
   }
 
-  const pathname = usePathname();
-
-  const menus = [
-    { nom: "Dashboard", lien: "/agent/dashboard", icone: LayoutDashboard },
-    { nom: "File", lien: "/agent/file", icone: Users },
-    { nom: "Console d'appel", lien: "/agent/console", icone: Bell },
-    { nom: "Profil", lien: "/agent/profile", icone: User },
-  ];
+  // NOTE : Ne bloque plus si !counter. 
+  // Affiche un message d'avertissement dans le contenu, 
+  // mais laisse l'agent naviguer (pour qu'il puisse voir son profil par ex.)
 
   return (
     <div className="flex min-h-screen bg-background">
