@@ -251,19 +251,19 @@ export default function AgentDashboard() {
     )
   }
 
-  if (!agent || !counter) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background p-6">
-        <Card className="max-w-md w-full text-center p-8 border-0 shadow-lg bg-card">
-          <AlertTriangle className="mx-auto size-16 text-amber-500 mb-4" />
-          <h2 className="text-xl font-bold text-foreground mb-2">Aucun guichet assigné</h2>
-          <p className="text-muted-foreground">
-            Vous n&apos;êtes pas assigné à un guichet actif pour l&apos;Hôpital du Mali. Contactez votre administrateur.
-          </p>
-        </Card>
-      </div>
-    )
-  }
+  // if (!agent || !counter) {
+  //   return (
+  //     <div className="flex min-h-screen items-center justify-center bg-background p-6">
+  //       <Card className="max-w-md w-full text-center p-8 border-0 shadow-lg bg-card">
+  //         <AlertTriangle className="mx-auto size-16 text-amber-500 mb-4" />
+  //         <h2 className="text-xl font-bold text-foreground mb-2">Aucun guichet assigné</h2>
+  //         <p className="text-muted-foreground">
+  //           Vous n&apos;êtes pas assigné à un guichet actif pour l&apos;Hôpital du Mali. Contactez votre administrateur.
+  //         </p>
+  //       </Card>
+  //     </div>
+  //   )
+  // }
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">

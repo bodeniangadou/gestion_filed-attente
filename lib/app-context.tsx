@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, ReactNode, useCallback } from "react"
+import { createContext, useContext, useState, ReactNode, useCallback  } from "react"
 
 export type UserRole = "visitor" | "patient" | "agent" | "admin"
 
@@ -180,8 +180,23 @@ const defaultHospitalSettings: HospitalSettings = {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 import {  useEffect } from "react"
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
+const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== "undefined") {
+      const savedUser = localStorage.getItem("app-user");
+      return savedUser ? JSON.parse(savedUser) : null;
+    }
+    return null;
+  });
+
+  // 3. Sauvegarde automatiquement dans localStorage quand 'user' change
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem("app-user", JSON.stringify(user));
+    } else {
+      localStorage.removeItem("app-user");
+    }
+  }, [user]);
+    const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
   const [services, setServices] = useState<Service[]>(defaultServices)
   const [counters, setCounters] = useState<Counter[]>(defaultCounters)
