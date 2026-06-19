@@ -37,6 +37,7 @@ export interface Ticket {
   userName: string
   status: "waiting" | "called" | "serving" | "completed" | "absent" | "cancelled"
   position: number
+  waitTime?: number 
   totalInQueue: number
   createdAt: Date
   calledAt?: Date
@@ -77,6 +78,7 @@ export interface HospitalSettings {
 
 interface AppContextType {
   user: User | null
+  isLoading: boolean
   setUser: (user: User | null) => void
   currentTicket: Ticket | null
   setCurrentTicket: (ticket: Ticket | null) => void
@@ -111,7 +113,6 @@ interface AppContextType {
   recallPatient: (ticketId: string) => void
   completeService: (ticketId: string) => void
   toggleCounter: (open: boolean) => void
-  
   // Admin actions
   createService: (service: Omit<Service, "id">) => Service
   updateService: (id: string, updates: Partial<Service>) => void
@@ -180,6 +181,7 @@ const defaultHospitalSettings: HospitalSettings = {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 import {  useEffect } from "react"
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [isLoading, setIsLoading] = useState(true); // Ajoute ceci
 const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("app-user");
@@ -546,12 +548,14 @@ const [user, setUser] = useState<User | null>(() => {
     <AppContext.Provider
       value={{
         user,
+        isLoading,
         setUser,
         currentTicket,
         setCurrentTicket,
         tickets,
         setTickets,
         services,
+
         setServices,
         counters,
         setCounters,

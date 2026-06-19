@@ -10,7 +10,7 @@ import {
   User,
   Monitor,
   LayoutDashboard,
-  Plus
+  Plus , ListOrdered, Users , Settings
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useApp } from "@/lib/app-context"
@@ -24,31 +24,36 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
   const pathname = usePathname() // 👈 Détecteur de chemin mobile
 
   const getNavItems = () => {
-    if (!user || user.role === "visitor" || user.role === "patient") {
-      return [
-        { icon: Home, label: "Accueil", href: "/home" },
-        { icon: Stethoscope, label: "Services", href: "/services" },
-        { icon: Plus, label: "Ticket", href: "#", isAction: true },
-        { icon: Ticket, label: "Suivi", href: "/tickets" },
-        { icon: User, label: "Profil", href: "/profile" },
-      ]
-    }
-    
-    if (user.role === "agent") {
-      return [
-        { icon: LayoutDashboard, label: "Console", href: "/agent/console" },
-        { icon: Stethoscope, label: "Ma File", href: "/agent/queue" },
-        { icon: User, label: "Profil", href: "/profile" },
-      ]
-    }
-    
+  // --- Patient ---
+  if (!user || user.role === "patient") {
     return [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
-      { icon: Stethoscope, label: "Services", href: "/admin/services" },
-      { icon: Monitor, label: "Guichets", href: "/admin/counters" },
-      { icon: User, label: "Profil", href: "/admin/profile" },
-    ]
+      { icon: Home, label: "Accueil", href: "/patient" },
+      { icon: Stethoscope, label: "Services", href: "/patient/services" },
+      { icon: Ticket, label: "Mes Tickets", href: "/patient/tickets" },
+      { icon: User, label: "Profil", href: "/patient/profile" },
+    ];
   }
+
+  // --- Agent ---
+  if (user.role === "agent") {
+    return [
+      { icon: LayoutDashboard, label: "Tableau", href: "/agent" },
+      { icon: Monitor, label: "Console", href: "/agent/console" },
+      { icon: ListOrdered, label: "Ma File", href: "/agent/file" },
+      { icon: User, label: "Profil", href: "/agent/profil" },
+    ];
+  }
+
+  // --- Admin ---
+  return [
+    { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
+    { icon: Users, label: "Agents", href: "/admin/agents" },
+    { icon: Stethoscope, label: "Services", href: "/admin/services" },
+    { icon: Monitor, label: "Guichets", href: "/admin/counters" },
+    { icon: Settings, label: "Réglages", href: "/admin/settings" },
+    { icon: User, label: "Profil", href: "/admin/profile" },
+  ];
+};
 
   const navItems = getNavItems()
 

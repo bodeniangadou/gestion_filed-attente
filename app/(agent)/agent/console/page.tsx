@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Ticket } from "@/lib/app-context";
 import {
   Phone,
   PhoneOff,
@@ -62,7 +63,7 @@ const ticketsSimules = [
 ];
 
 export default function ConsoleAppel() {
-  const [patientActuel, setPatientActuel] = useState(null);
+const [patientActuel, setPatientActuel] = useState<Ticket | null>(null);
   const [fileAttente, setFileAttente] = useState(ticketsSimules);
   const [guichetOuvert, setGuichetOuvert] = useState(true);
   const [sonActif, setSonActif] = useState(true);
@@ -70,45 +71,55 @@ export default function ConsoleAppel() {
 
   const [consultationActive, setConsultationActive] = useState(false);
   const [debutConsultation, setDebutConsultation] = useState(null);
-  const [dureeConsultationReelle, setDureeConsultationReelle] = useState(0);
-
+const [dureeConsultationReelle, setDureeConsultationReelle] = useState<number | null>(0);
   const [modalPriorite, setModalPriorite] = useState(false);
   const [numeroPriorite, setNumeroPriorite] = useState("");
   const [annonceKey, setAnnonceKey] = useState(0);
 
-  const syntheseVocale = useRef(null);
+  // Ajoute <SpeechSynthesisUtterance> entre les chevrons
+const syntheseVocale = useRef<SpeechSynthesisUtterance | null>(null);
+
+useEffect(() => {
+  const utterance = new SpeechSynthesisUtterance();
+  utterance.lang = "fr-FR";
+  utterance.rate = 0.9;
+  
+  syntheseVocale.current = utterance;
+}, []);
 
   useEffect(() => {
-    syntheseVocale.current = new SpeechSynthesisUtterance();
-    syntheseVocale.current.lang = "fr-FR";
-    syntheseVocale.current.rate = 0.9;
-  }, []);
+  // Utilise ReturnType<typeof setInterval> pour être précis et éviter les erreurs de type
+  let intervalle: ReturnType<typeof setInterval> | undefined;
 
-  useEffect(() => {
-    let intervalle;
-    if (consultationActive && debutConsultation) {
-      intervalle = setInterval(() => {
-        setDureeConsultationReelle(
-          Math.floor((Date.now() - debutConsultation) / 1000),
-        );
-      }, 1000);
-    }
-    return () => clearInterval(intervalle);
-  }, [consultationActive, debutConsultation]);
+  if (consultationActive && debutConsultation) {
+    intervalle = setInterval(() => {
+      setDureeConsultationReelle(
+        Math.floor((Date.now() - debutConsultation) / 1000),
+      );
+    }, 1000);
+  }
 
-  const parler = (message) => {
-    if (!sonActif) return;
-    if (syntheseVocale.current) {
-      syntheseVocale.current.text = message;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(syntheseVocale.current);
-    }
+  // Le nettoyage est crucial ici pour éviter que l'intervalle ne tourne en boucle
+  return () => {
+    if (intervalle) clearInterval(intervalle);
   };
+}, [consultationActive, debutConsultation]);
 
-  const annoncerPatient = (ticket) => {
-    const phrase = `Ticket ${ticket.numero}, veuillez vous présenter au guichet A1.`;
-    parler(phrase);
-  };
+  const parler = (message: string) => {
+  if (!sonActif) return;
+  if (syntheseVocale.current) {
+    syntheseVocale.current.text = message;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(syntheseVocale.current);
+  }
+};
+
+  // Assure-toi d'avoir accès à ton interface 'Ticket'
+const annoncerPatient = (ticket: Ticket) => {
+  // TypeScript connaît maintenant toutes les propriétés de ticket
+  const phrase = `Ticket ${ticket.number}, veuillez vous présenter au guichet ${ticket.counterName || "disponible"}.`;
+  parler(phrase);
+};
 
   const appelerSuivant = () => {
     if (!guichetOuvert || fileAttente.length === 0) return;
@@ -186,7 +197,7 @@ export default function ConsoleAppel() {
     setModalPriorite(false);
   };
 
-  const formaterDuree = (sec) => {
+  const formaterDuree = (sec : number ) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;

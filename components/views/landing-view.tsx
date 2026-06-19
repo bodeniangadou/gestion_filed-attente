@@ -98,7 +98,7 @@ const testimonials = [
 ]
 
 export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
-  const { services, takeTicket, activeTicket } = useApp()
+const { services, takeTicket, currentTicket } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -134,12 +134,12 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   useEffect(() => {
     setIsMounted(true)
   }, [])
-  const generatedTicket = activeTicket
-    ? {
-      number: activeTicket.number,
-      service: activeTicket.serviceName,
-      waitTime: activeTicket.waitTime,
-      queuePos: activeTicket.queuePosition
+  const generatedTicket = currentTicket
+  ? {
+      number: currentTicket.number,
+      service: currentTicket.service.name,
+      waitTime: currentTicket.waitTime || 0,
+      queuePos: currentTicket.position
     }
     : localTicket
 
@@ -593,17 +593,19 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         </DialogContent>
       </Dialog>
 
-      {/* NOUVEAU COMPOSANT INTEGRÉ : MODAL DE SUIVI HORIZONTAL LARGE, SANS FLOU EXTÉRIEUR */}
-      <TicketTrackingModal
-        isOpen={showTrackingModal}
-        onClose={() => setShowTrackingModal(false)}
-        ticket={generatedTicket}
-        onCancelTicket={() => {
-          setLocalTicket(null);
-          setShowTrackingModal(false);
-        }}
-      />
+     {generatedTicket && (
+  <TicketTrackingModal
+    isOpen={showTrackingModal}
+    onClose={() => setShowTrackingModal(false)}
+    ticket={generatedTicket}
+    onCancelTicket={() => {
+      setLocalTicket(null);
+      setShowTrackingModal(false);
+    }}
+  />
+   )}
 
+   
       {/* COMPOSANT WHY US */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">

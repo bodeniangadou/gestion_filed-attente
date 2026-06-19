@@ -110,6 +110,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       id: "user-" + Date.now(),
       firstName,
       lastName,
+      name: `${firstName} ${lastName}`, 
       email,
       phone,
       role: "patient"
@@ -125,6 +126,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       id: "demo-" + Date.now(),
       firstName: role === "admin" ? "Admin" : role === "agent" ? "Agent" : "Patient",
       lastName: "Demo", 
+      name: `${firstName} ${lastName}`, 
       email: `${role}@demo.ml`,
       role
     })

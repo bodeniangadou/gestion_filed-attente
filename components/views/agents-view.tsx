@@ -38,9 +38,10 @@ export  function AgentsView() {
       firstName: newAgent.firstName,
       email: newAgent.email,
       role: "agent",
-      isActive: true,
+      isOnline: true,
       serviceId: newAgent.serviceId || undefined,
       counterId: newAgent.counterId || undefined,
+      ticketsServedToday: 0,
     }
     
     setAgents([...agents, agent])
@@ -63,7 +64,7 @@ export  function AgentsView() {
 
   const toggleAgentStatus = (agentId: string) => {
     setAgents(agents.map(a => 
-      a.id === agentId ? { ...a, isActive: !a.isActive } : a
+      a.id === agentId ? { ...a, isOnline: !a.isOnline } : a
     ))
   }
 
@@ -120,7 +121,7 @@ export  function AgentsView() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Agents Actifs</p>
               <p className="text-2xl font-bold text-emerald mt-1">
-                {agents.filter(a => a.isActive).length}
+                {agents.filter(a => a.isOnline).length}
               </p>
             </div>
             <div className="size-10 rounded-lg bg-emerald/10 flex items-center justify-center text-emerald">
@@ -132,7 +133,7 @@ export  function AgentsView() {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Accès Bloqués</p>
               <p className="text-2xl font-bold text-destructive mt-1">
-                {agents.filter(a => !a.isActive).length}
+                {agents.filter(a => !a.isOnline).length}
               </p>
             </div>
             <div className="size-10 rounded-lg bg-destructive/10 flex items-center justify-center text-destructive">
@@ -151,7 +152,7 @@ export  function AgentsView() {
               transition={{ delay: index * 0.05, ease: "easeOut" }}
             >
               <Card className={`relative overflow-hidden transition-all duration-300 border-border/60 hover:shadow-md ${
-                !agent.isActive ? "opacity-60 bg-muted/30 border-dashed shadow-none" : "bg-card"
+                !agent.isOnline ? "opacity-60 bg-muted/30 border-dashed shadow-none" : "bg-card"
               }`}>
                 <CardContent className="p-6">
                   {/* Top: Avatar, Infos & Badge Statut */}
@@ -159,7 +160,7 @@ export  function AgentsView() {
                     <div className="flex items-center gap-4">
                       <Avatar className="size-14 ring-2 ring-border shadow-inner shrink-0">
                         <AvatarImage src={agent.photo} />
-                        <AvatarFallback className={`${agent.isActive ? "bg-emerald" : "bg-muted-foreground"} text-primary-foreground font-semibold`}>
+                        <AvatarFallback className={`${agent.isOnline ? "bg-emerald" : "bg-muted-foreground"} text-primary-foreground font-semibold`}>
                           {agent.firstName?.charAt(0)}{agent.name?.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
@@ -183,18 +184,18 @@ export  function AgentsView() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48">
                         <DropdownMenuItem 
-                          disabled={!agent.isActive}
+                          disabled={!agent.isOnline}
                           onSelect={(e) => { e.preventDefault(); openAssignModal(agent); }}
                         >
                           <Link2 className="mr-2 size-4" />
                           Assigner au guichet
                         </DropdownMenuItem>
                         <DropdownMenuItem 
-                          className={agent.isActive ? "text-destructive" : "text-emerald"}
+                          className={agent.isOnline ? "text-destructive" : "text-emerald"}
                           onClick={() => toggleAgentStatus(agent.id)}
                         >
-                          <Plus className={`mr-2 size-4 rotate-45 ${!agent.isActive ? "rotate-0" : ""}`} />
-                          {agent.isActive ? "Désactiver l'accès" : "Réactiver l'accès"}
+                          <Plus className={`mr-2 size-4 rotate-45 ${!agent.isOnline ? "rotate-0" : ""}`} />
+                          {agent.isOnline ? "Désactiver l'accès" : "Réactiver l'accès"}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -203,7 +204,7 @@ export  function AgentsView() {
                   {/* Bottom: Séparateur et Zone des Badges Spacieux */}
                   <div className="mt-6 pt-4 border-t border-border/50 flex items-center justify-between gap-2">
                     <div className="flex flex-wrap gap-2">
-                      {agent.isActive ? (
+                      {agent.isOnline ? (
                         <>
                           <Badge variant="secondary" className="gap-1.5 px-3 py-1 text-xs font-medium rounded-lg bg-muted border border-border/40">
                             <Stethoscope className="size-3.5 text-muted-foreground" />
@@ -223,7 +224,7 @@ export  function AgentsView() {
 
                     {/* Badge État Fixe à droite pour équilibrer */}
                     <div>
-                      {agent.isActive ? (
+                      {agent.isOnline ? (
                         <span className="inline-flex items-center text-[11px] font-semibold text-emerald bg-emerald/10 border border-emerald/20 px-2 py-0.5 rounded-md">
                           En ligne
                         </span>

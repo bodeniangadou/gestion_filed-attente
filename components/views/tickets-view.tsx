@@ -33,7 +33,8 @@ export function TicketsView() {
     serving: { label: "En cours", color: "bg-blue-500", textColor: "text-blue-500" },
     completed: { label: "Terminé", color: "bg-gray-400", textColor: "text-gray-500" },
     absent: { label: "Absent", color: "bg-red-500", textColor: "text-red-500" },
-  }
+    cancelled: { label: "Annulé", color: "bg-rose-500", textColor: "text-rose-500" },
+}
 
   const pastTickets = tickets.filter(t => t.status === "completed" || t.status === "absent")
 

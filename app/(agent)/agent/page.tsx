@@ -264,7 +264,13 @@ export default function AgentDashboard() {
   //     </div>
   //   )
   // }
-
+if (!counter) {
+  return (
+    <div className="flex h-20 items-center justify-center text-muted-foreground">
+      Chargement du guichet...
+    </div>
+  );
+}
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
       
@@ -294,7 +300,7 @@ export default function AgentDashboard() {
             </div>
             <div className="flex items-center gap-2">
               <Switch 
-                checked={counter.isActive} 
+                checked={counter?.isActive} 
                 onCheckedChange={handleToggleCounter}
               />
             </div>
