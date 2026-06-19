@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, ReactNode, useCallback } from "react"
+import { createContext, useContext, useState, ReactNode, useCallback  } from "react"
 
 export type UserRole = "visitor" | "patient" | "agent" | "admin"
 
@@ -37,6 +37,7 @@ export interface Ticket {
   userName: string
   status: "waiting" | "called" | "serving" | "completed" | "absent" | "cancelled"
   position: number
+  waitTime?: number 
   totalInQueue: number
   createdAt: Date
   calledAt?: Date
@@ -77,6 +78,7 @@ export interface HospitalSettings {
 
 interface AppContextType {
   user: User | null
+  isLoading: boolean
   setUser: (user: User | null) => void
   currentTicket: Ticket | null
   setCurrentTicket: (ticket: Ticket | null) => void
@@ -111,7 +113,6 @@ interface AppContextType {
   recallPatient: (ticketId: string) => void
   completeService: (ticketId: string) => void
   toggleCounter: (open: boolean) => void
-  
   // Admin actions
   createService: (service: Omit<Service, "id">) => Service
   updateService: (id: string, updates: Partial<Service>) => void
@@ -180,8 +181,24 @@ const defaultHospitalSettings: HospitalSettings = {
 const AppContext = createContext<AppContextType | undefined>(undefined)
 import {  useEffect } from "react"
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
+  const [isLoading, setIsLoading] = useState(true); // Ajoute ceci
+const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== "undefined") {
+      const savedUser = localStorage.getItem("app-user");
+      return savedUser ? JSON.parse(savedUser) : null;
+    }
+    return null;
+  });
+
+  // 3. Sauvegarde automatiquement dans localStorage quand 'user' change
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem("app-user", JSON.stringify(user));
+    } else {
+      localStorage.removeItem("app-user");
+    }
+  }, [user]);
+    const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
   const [services, setServices] = useState<Service[]>(defaultServices)
   const [counters, setCounters] = useState<Counter[]>(defaultCounters)
@@ -518,32 +535,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-useEffect(() => {
-  const testAgent = defaultAgents.find(a => a.id === "a1");
-  if (testAgent) {
-    setUser({
-      id: testAgent.id,
-      name: testAgent.name,
-      firstName: testAgent.firstName,
-      email: testAgent.email,
-      role: "agent"
-    });
-    
-    setCounters(prev => prev.map(c => 
-      c.id === "c1" ? { ...c, isActive: true, agentId: testAgent.id } : c
-    ));
-  }
-}, []);
+  // useEffect(() => {
+  //   setUser({
+  //     id: "admin1",
+  //     name: "Admin",
+  //     firstName: "Super",
+  //     email: "admin@hopitalmali.ml",
+  //     role: "admin",
+  //   });
+  // }, []);
   return (
     <AppContext.Provider
       value={{
         user,
+        isLoading,
         setUser,
         currentTicket,
         setCurrentTicket,
         tickets,
         setTickets,
         services,
+
         setServices,
         counters,
         setCounters,

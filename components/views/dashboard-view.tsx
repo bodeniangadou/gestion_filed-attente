@@ -20,7 +20,7 @@ const recentActivity = [
   { type: "ticket", message: "Nouveau ticket U007 - Urgences", time: "Il y a 15 min" },
 ]
 
-export function DashboardView() {
+export  default function DashboardView() {
   const { services, counters, user } = useApp()
 
   const activeCounters = counters.filter(c => c.isActive).length
