@@ -58,15 +58,14 @@ export function AppSidebar() {
   const { user, logout } = useApp()
   const pathname = usePathname() // 👈 Récupère l'URL courante (ex: /admin/services)
  const filteredItems = navItems.filter((item) => {
-    // 1. Vérification du rôle
-    const hasRole = user && item.roles.includes(user.role);
-    
-    // 2. Détection de l'espace actuel (admin, agent ou patient)
-    // On regarde si l'URL commence par le même dossier que le lien
-    const isCorrectSpace = item.href.startsWith(`/${user?.role || 'visitor'}`);
+  // 1. L'utilisateur doit avoir le rôle requis pour voir ce lien
+  const hasRole = user && item.roles.includes(user.role);
+  
+  // 2. Le lien doit commencer par le rôle de l'utilisateur (ex: '/admin')
+  const isCorrectSpace = item.href.startsWith(`/${user?.role}`);
 
-    return hasRole && isCorrectSpace;
-  });
+  return hasRole && isCorrectSpace;
+});
   return (
     <motion.aside
       initial={{ x: -280 }}

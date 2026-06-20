@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { supabase } from "@/lib/supabase"; 
+import * as LucideIcons from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -47,14 +49,11 @@ interface LandingViewProps {
   onLogin: () => void
 }
 
-const serviceIcons: Record<string, React.ReactNode> = {
-  "stethoscope": <Stethoscope className="size-5" />,
-  "siren": <Siren className="size-5" />,
-  "scan": <ScanLine className="size-5" />,
-  "flask": <FlaskConical className="size-5" />,
-  "pill": <Pill className="size-5" />,
-  "heart-pulse": <HeartPulse className="size-5" />,
-}
+const DynamicIcon = ({ name, className }: { name: string, className?: string }) => {
+const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
+  const LucideIcon = (LucideIcons as any)[name] || LucideIcons.Building2; 
+  return <LucideIcon className={className} />;
+};
 
 const features = [
   {
@@ -460,7 +459,9 @@ const { services, takeTicket, currentTicket } = useApp()
           </div>
 
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {filteredServices.map((service) => (
+            {filteredServices
+            .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
+            .map((service) => (
               <motion.div key={service.id} variants={itemVariants}>
                 <Card
                   className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive
@@ -476,7 +477,7 @@ const { services, takeTicket, currentTicket } = useApp()
                             ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
                             : "bg-muted text-muted-foreground"
                           }`}>
-                          {serviceIcons[service.icon] || <Building2 className="size-5" />}
+<DynamicIcon name={service.icon} className="size-5" />
                         </div>
                         <Badge variant={service.isActive ? "outline" : "destructive"} className="text-xs">
                           {service.isActive ? `${service.currentQueue} en attente` : "Fermé"}

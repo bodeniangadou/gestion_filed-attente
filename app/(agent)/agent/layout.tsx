@@ -1,45 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useApp } from "@/lib/app-context";
 import { AppSidebar } from "@/components/app-sidebar";
 import { BottomNav } from "@/components/bottom-nav";
-import { useApp } from "@/lib/app-context";
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function AgentLayout({ children }: { children: React.ReactNode }) {
-  const { user, getCurrentAgent, getAgentCounter } = useApp();
-  const [isLoading, setIsLoading] = useState(true);
+  const { user } = useApp();
+  const router = useRouter();
+  const [isReady, setIsReady] = useState(false);
 
-  // useEffect(() => {
-  //   // On attend juste que le système vérifie l'utilisateur
-  //   setIsLoading(false);
-  // }, []);
+  useEffect(() => {
+    if (user) {
+      if (user.role !== "agent") {
+        // Notification pour expliquer la redirection
+        toast.error("Accès restreint", {
+          description: "Cette zone est réservée aux agents. Vous allez être redirigé.",
+        });
 
-  // if (isLoading) {
-  //   return (
-  //     <div className="flex min-h-screen w-full items-center justify-center bg-background">
-  //       <Loader2 className="size-8 text-emerald-500 animate-spin" />
-  //     </div>
-  //   );
-  // }
+        // Redirection vers le rôle approprié
+        router.push(`/${user.role}`);
+      } else {
+        // Accès autorisé
+        setIsReady(true);
+      }
+    } else if (user === null) {
+      // Pas de session, retour à la connexion
+      router.push("/");
+    }
+  }, [user, router]);
 
-  // // SÉCURITÉ : Bloque uniquement si l'utilisateur n'est pas un agent
-  // if (!user || user.role !== "agent") {
-  //   return (
-  //     <div className="flex min-h-screen w-full items-center justify-center bg-background p-6">
-  //       <Card className="max-w-md w-full text-center p-8">
-  //         <h2 className="text-xl font-bold">Accès non autorisé</h2>
-  //         <p>Vous devez être connecté en tant qu'agent pour accéder à cette zone.</p>
-  //       </Card>
-  //     </div>
-  //   );
-  // }
+  // Écran de chargement pendant la vérification
+  if (!isReady) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-background">
+        <Loader2 className="size-8 text-emerald-500 animate-spin" />
+      </div>
+    );
+  }
 
-  // NOTE : Ne bloque plus si !counter. 
-  // Affiche un message d'avertissement dans le contenu, 
-  // mais laisse l'agent naviguer (pour qu'il puisse voir son profil par ex.)
-
+  // Interface Agent
   return (
     <div className="flex min-h-screen bg-background">
       <AppSidebar />

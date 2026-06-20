@@ -180,6 +180,7 @@ const defaultHospitalSettings: HospitalSettings = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 import {  useEffect } from "react"
+import { supabase } from "@/lib/supabase"; // Importe ton client Supabase
 export function AppProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true); // Ajoute ceci
 const [user, setUser] = useState<User | null>(() => {
@@ -190,7 +191,6 @@ const [user, setUser] = useState<User | null>(() => {
     return null;
   });
 
-  // 3. Sauvegarde automatiquement dans localStorage quand 'user' change
   useEffect(() => {
     if (user) {
       localStorage.setItem("app-user", JSON.stringify(user));
@@ -198,9 +198,52 @@ const [user, setUser] = useState<User | null>(() => {
       localStorage.removeItem("app-user");
     }
   }, [user]);
+
+useEffect(() => {
+  const fetchServices = async () => {
+    const { data, error } = await supabase
+      .from("service")
+      .select("*");
+
+    if (error) {
+      console.error("Erreur chargement services:", error);
+    } else if (data) {
+     
+      const mappedServices: Service[] = data.map((s: any) => ({
+        id: s.id,
+        name: s.nom,              
+        description: s.description || "",
+        icon: s.icon || "LayoutGrid",
+        waitTime: s.wait_time || 0,         // SQL 'wait_time' -> Interface 'waitTime'
+        currentQueue: s.current_queue || 0, // SQL 'current_queue' -> Interface 'currentQueue'
+        isActive: s.is_active || false,     // SQL 'is_active' -> Interface 'isActive'
+        openTime: s.open_time || "08:00",
+        closeTime: s.close_time || "17:00"
+      }));
+      
+      setServices(mappedServices);
+    }
+    
+    setIsLoading(false);
+  };
+
+  fetchServices();
+
+  const channel = supabase
+    .channel('schema-db-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, 
+    () => {
+      fetchServices();
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, []);
     const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
-  const [services, setServices] = useState<Service[]>(defaultServices)
+const [services, setServices] = useState<Service[]>([]); 
   const [counters, setCounters] = useState<Counter[]>(defaultCounters)
   const [agents, setAgents] = useState<Agent[]>(defaultAgents)
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
@@ -544,6 +587,41 @@ const [user, setUser] = useState<User | null>(() => {
   //     role: "admin",
   //   });
   // }, []);
+  const loadUserProfile = useCallback(async (userId: string) => {
+  const { data, error } = await supabase
+    .from("utilisateur")
+    .select("*")
+    .eq("id", userId)
+    .single();
+
+  if (data && !error) {
+    setUser({
+      id: data.id,
+      email: data.email,
+      firstName: data.nom.split(' ')[0] || "",
+      name: data.nom.split(' ')[1] || "",
+      role: data.role as UserRole,
+      photo: data.photo_url || "", // <-- C'est ici que l'image arrive !
+    });
+  }
+}, []);
+useEffect(() => {
+  // Au démarrage, on vérifie si une session existe
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) loadUserProfile(session.user.id);
+  });
+
+  // On écoute les changements (login/logout)
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      loadUserProfile(session.user.id);
+    } else if (event === 'SIGNED_OUT') {
+      setUser(null);
+    }
+  });
+
+  return () => subscription.unsubscribe();
+}, [loadUserProfile]);
   return (
     <AppContext.Provider
       value={{

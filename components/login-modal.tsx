@@ -1,9 +1,10 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
-
+import { toast } from "sonner"
 import { 
   Dialog, 
   DialogContent, 
@@ -63,83 +64,127 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     resetForm()
     onOpenChange(false)
   }
+const handleLogin = async (e: React.FormEvent) => {
+  e.preventDefault()
+  setIsLoading(true)
+  
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    
-    // Simulate login
-    await new Promise(resolve => setTimeout(resolve, 800))
-    
-    // Demo: Check for special emails
-    let role: UserRole = "patient"
-    if (email.includes("admin")) {
-      role = "admin"
-    } else if (email.includes("agent")) {
-      role = "agent"
-    }
-    
- 
-    setUser({
-      id: "user-" + Date.now(),
-      firstName: email.split("@")[0],
-      lastName: "",
-      email,
-      role,
-      name: ""
-    })
-    
-    setIsLoading(false)
-    handleClose()
-    onSuccess()
-    if (role === "admin") {
-      router.push("/admin")
-    } else if (role === "agent") {
-      router.push("/agent")
-    } else {
-      router.push("/patient") // Les patients restent à la racine
-    }
-  }
+  if (error) {
+  toast.error("Erreur de connexion", {
+    description: error.message === "Invalid login credentials" 
+      ? "Email ou mot de passe incorrect" 
+      : error.message
+  })
+  setIsLoading(false)
+  return
+}
+
+  // Récupérer le rôle dans ta table
+  const { data: profile } = await supabase
+    .from("utilisateur")
+    .select("role")
+    .eq("id", data.user.id)
+    .single()
+
+  setUser({
+    id: data.user.id,
+    email: data.user.email || "",
+    role: profile?.role || "patient",
+    firstName: "", // À charger depuis le profile si besoin
+    lastName: "",
+    name: ""
+  })
+  
+  setIsLoading(false)
+  handleClose()
+  onSuccess()
+  router.push(profile?.role === "admin" ? "/admin" : profile?.role === "agent" ? "/agent" : "/patient")
+}
 
   const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-        await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    setUser({
-      id: "user-" + Date.now(),
-      firstName,
-      lastName,
-      name: `${firstName} ${lastName}`, 
-      email,
-      phone,
-      role: "patient"
+  e.preventDefault()
+
+  if (!/^\d{8}$/.test(phone)) {
+    toast.warning("Format invalide", {
+      description: "Le numéro doit contenir exactement 8 chiffres."
     })
-    
-    setIsLoading(false)
-    handleClose()
-    onSuccess()
+    return
   }
 
-  const handleRoleSelect = (role: UserRole) => {
-    setUser({
-      id: "demo-" + Date.now(),
-      firstName: role === "admin" ? "Admin" : role === "agent" ? "Agent" : "Patient",
-      lastName: "Demo", 
-      name: `${firstName} ${lastName}`, 
-      email: `${role}@demo.ml`,
-      role
+  setIsLoading(true)
+
+  const { data: existingPhone } = await supabase
+    .from("utilisateur")
+    .select("id")
+    .eq("telephone", phone)
+    .single()
+
+  if (existingPhone) {
+    toast.warning("Numéro déjà enregistré", {
+      description: "Ce numéro de téléphone est déjà associé à un autre compte.",
     })
-    handleClose()
-    onSuccess()
-    if (role === "admin") {
-      router.push("/admin")
-    } else if (role === "agent") {
-      router.push("/agent")
-    } else {
-      router.push("/patient")
+    setIsLoading(false)
+    return
+  }
+
+  // 3. Inscription Auth (Supabase gère l'unicité de l'email ici)
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { data: { nom: `${firstName} ${lastName}` } }
+  })
+
+  if (error) {
+    let errorMessage = error.message
+    if (error.message.includes("already registered")) {
+      errorMessage = "Un compte existe déjà avec cette adresse email."
+    }
+    
+    toast.error("Erreur d'inscription", {
+      description: errorMessage
+    })
+    setIsLoading(false)
+    return
+  }
+
+  if (data.user) {
+    const { error: dbError } = await supabase.from("utilisateur").insert([{
+      id: data.user.id,
+      nom: `${firstName} ${lastName}`,
+      email: email,
+      role: "patient",
+      telephone: phone,
+      photo_url:null
+    }])
+
+    if (dbError) {
+      toast.error("Erreur profil", {
+        description: "Un problème est survenu lors de la création de votre profil. Veuillez réessayer."
+      })
+      setIsLoading(false)
+      return
     }
   }
+
+ 
+toast.success("Compte créé avec succès !", {
+  description: "Votre compte est actif. Veuillez vous connecter maintenant.",
+  duration: 5000,
+})
+
+setMode("login") 
+
+setIsLoading(false)
+  
+  setIsLoading(false)
+  handleClose()
+}
+
+  
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -236,13 +281,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
                   Creer un compte
                 </Button>
 
-                <button
-                  type="button"
-                  onClick={() => setMode("role-select")}
-                  className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  Acces demo (sans compte)
-                </button>
+                
               </div>
             </motion.div>
           )}
@@ -365,72 +404,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
             </motion.div>
           )}
 
-          {mode === "role-select" && (
-            <motion.div
-              key="role-select"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="p-6"
-            >
-              <DialogHeader className="mb-6">
-                <button 
-                  onClick={() => setMode("login")}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
-                >
-                  <ArrowLeft className="size-4" />
-                  Retour
-                </button>
-                <DialogTitle className="text-xl">
-                  Acces Demo
-                </DialogTitle>
-                <DialogDescription>
-                  Choisissez un profil pour tester l&apos;application
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-3">
-                <button
-                  onClick={() => handleRoleSelect("patient")}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left"
-                >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <User className="size-6" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Patient</p>
-                    <p className="text-sm text-muted-foreground">Prendre un ticket et suivre sa position</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleRoleSelect("agent")}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left"
-                >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
-                    <Stethoscope className="size-6" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Agent</p>
-                    <p className="text-sm text-muted-foreground">Gerer un guichet et appeler les patients</p>
-                  </div>
-                </button>
-
-                <button
-                  onClick={() => handleRoleSelect("admin")}
-                  className="w-full flex items-center gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left"
-                >
-                  <div className="flex size-12 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                    <ShieldCheck className="size-6" />
-                  </div>
-                  <div>
-                    <p className="font-semibold">Super Admin</p>
-                    <p className="text-sm text-muted-foreground">Gerer les services, guichets et agents</p>
-                  </div>
-                </button>
-              </div>
-            </motion.div>
-          )}
+        
         </AnimatePresence>
       </DialogContent>
     </Dialog>

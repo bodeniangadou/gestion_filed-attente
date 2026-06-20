@@ -199,7 +199,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
       <div className="mx-auto max-w-4xl p-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <AnimatePresence mode="popLayout">
-            {filteredServices.map((service, index) => (
+            {filteredServices            
+            .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
+          .map((service, index) => (
               <motion.div
                 key={service.id}
                 initial={{ opacity: 0, y: 20 }}
