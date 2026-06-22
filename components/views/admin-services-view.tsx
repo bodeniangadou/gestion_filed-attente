@@ -1,7 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { supabase } from "@/lib/supabase"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 import { 
   Plus, 
   Search, 
@@ -51,37 +53,65 @@ const getIconComponent = (iconName: string) => {
   return found ? found.icon : Stethoscope
 }
 
+interface ServiceFormData {
+  name: string
+  description: string
+  icon: string
+  isActive: boolean
+  openTime: string
+  closeTime: string
+}
 export  function AdminServicesView() {
-  const { services, counters, tickets, createService, updateService, deleteService } = useApp()
+  const { services, counters, tickets, createService, updateService, deleteService , fetchServices } = useApp()
   
   const [searchQuery, setSearchQuery] = useState("")
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [qrCodeService, setQrCodeService] = useState<Service | null>(null)
 
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    icon: "stethoscope",
-    isActive: true
-  })
+  // Ajoute <ServiceFormData> après useState
+const [formData, setFormData] = useState<ServiceFormData>({
+  name: "",
+  description: "",
+  icon: "stethoscope",
+  isActive: true,
+  openTime: "08:00",
+  closeTime: "17:00"
+})
 
   const filteredServices = services.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const handleCreate = () => {
-    createService({
-      ...formData,
-      openTime: "08:00",
-      isActive: false, 
-      closeTime: "17:00",
-      waitTime: 15,
-      currentQueue: 0
-    })
-    setShowCreateModal(false)
-    resetForm()
+ const handleCreate = async () => {
+  const MON_ID_HOPITAL = "1789ea4c-f298-4109-803a-b036cda79ed0";
+
+  const { error } = await supabase
+    .from("service")
+    .insert([
+      {
+        nom: formData.name,
+        description: formData.description,
+        icon: formData.icon,
+        is_active: false, 
+        open_time: `${formData.openTime}:00`,
+        close_time: `${formData.closeTime}:00`,
+        wait_time: 15,
+        current_queue: 0,
+        id_hopital: MON_ID_HOPITAL
+      }
+    ]);
+
+  if (error) {
+    toast.error("Erreur", { description: error.message });
+    return;
   }
+
+  toast.success("Succès", { description: "Le service a été créé." });
+  setShowCreateModal(false);
+  resetForm();
+  await fetchServices();
+}
 
   const handleUpdate = () => {
     if (editingService) {
@@ -98,27 +128,30 @@ export  function AdminServicesView() {
   }
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      description: "",
-      icon: "stethoscope",
-      isActive: true
-    })
-  }
+  setFormData({
+    name: "",
+    description: "",
+    icon: "stethoscope",
+    isActive: true,
+    openTime: "08:00",
+    closeTime: "17:00"
+  })
+}
 
-  const openEditModal = (service: Service) => {
-    setEditingService(service)
-    setFormData({
-      name: service.name,
-      description: service.description,
-      icon: service.icon,
-      isActive: service.isActive
-    })
-  }
+const openEditModal = (service: Service) => {
+  setEditingService(service)
+  setFormData({
+    name: service.name,
+    description: service.description,
+    icon: service.icon,
+    isActive: service.isActive,
+    openTime: service.openTime || "08:00",
+    closeTime: service.closeTime || "17:00"
+  })
+}
 
   return (
     <div className="min-h-screen bg-background pb-12">
-      {/* Header compact */}
       <div className="border-b border-border bg-card px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div>
@@ -133,7 +166,6 @@ export  function AdminServicesView() {
       </div>
 
       <div className="mx-auto max-w-5xl p-6">
-        {/* Barre de recherche */}
         <div className="mb-4 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
@@ -149,7 +181,9 @@ export  function AdminServicesView() {
           {filteredServices.map((service, index) => {
             const Icon = getIconComponent(service.icon)
             const queueCount = tickets.filter(t => t.service.id === service.id && t.status === "waiting").length
-
+  const hasTickets = tickets.some(t => t.service.id === service.id);
+const hasCounters = counters.some(c => c.serviceId === service.id);
+  const canDelete = !hasTickets && !hasCounters;
             return (
               <motion.div
                 key={service.id}
@@ -160,7 +194,6 @@ export  function AdminServicesView() {
                 <Card className={`overflow-hidden border border-border/60 shadow-sm transition-all hover:border-primary/20 bg-card ${!service.isActive ? "opacity-60" : ""}`}>
                   <CardContent className="p-3.5 flex flex-col justify-between h-full min-h-[130px]">
                     
-                    {/* Partie Haute: Icône, Titre, Switch */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -188,7 +221,12 @@ export  function AdminServicesView() {
                         {queueCount}
                       </span>
                     </div>
-
+{/* Heures d'ouverture et fermeture */}
+<div className="flex items-center gap-2 mt-2 text-[10px] text-muted-foreground bg-secondary/30 px-2 py-1 rounded">
+  <span>Ouverture: <strong className="text-foreground">{service.openTime?.substring(0, 5) || "08:00"}</strong></span>
+  <span className="text-border">|</span>
+  <span>Fermeture: <strong className="text-foreground">{service.closeTime?.substring(0, 5) || "17:00"}</strong></span>
+</div>
                     {/* Partie Basse: Actions discrètes */}
                     <div className="flex items-center justify-between pt-2 mt-2 border-t border-border/40">
                       <Button
@@ -211,13 +249,15 @@ export  function AdminServicesView() {
                           <Edit className="size-3.5" />
                         </Button>
                         <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="size-7 text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(service.id)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                variant="ghost" 
+                size="icon" 
+                className={`size-7 ${canDelete ? "text-destructive hover:bg-destructive/10" : "text-muted-foreground/30 cursor-not-allowed"}`}
+                disabled={!canDelete}
+                onClick={() => canDelete && handleDelete(service.id)}
+                title={canDelete ? "Supprimer" : "Impossible : Service lié à des tickets ou guichets."}
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
                       </div>
                     </div>
 
@@ -299,7 +339,26 @@ export  function AdminServicesView() {
               </div>
             </div>
           </div>
-
+<div className="grid grid-cols-2 gap-3">
+  <div>
+    <label className="font-medium text-muted-foreground uppercase text-[10px]">Ouverture</label>
+    <Input
+      type="time"
+      value={formData.openTime}
+      onChange={(e) => setFormData({ ...formData, openTime: e.target.value })}
+      className="mt-1 h-9 text-xs"
+    />
+  </div>
+  <div>
+    <label className="font-medium text-muted-foreground uppercase text-[10px]">Fermeture</label>
+    <Input
+      type="time"
+      value={formData.closeTime}
+      onChange={(e) => setFormData({ ...formData, closeTime: e.target.value })}
+      className="mt-1 h-9 text-xs"
+    />
+  </div>
+</div>
           <div className="flex gap-2 pt-2">
             <Button variant="outline" size="sm" className="flex-1 h-9 text-xs" onClick={() => { setShowCreateModal(false); setEditingService(null); resetForm(); }}>
               Annuler
@@ -325,7 +384,7 @@ export  function AdminServicesView() {
             <div className="flex flex-col items-center justify-center gap-4 py-1">
               <div className="border border-border p-4 rounded-xl bg-white shadow-xs flex flex-col items-center justify-center">
                 <QRCodeSVG 
-                  value={qrCodeService.name} 
+value={`${window.location.origin}/scanner/${qrCodeService.id}`}
                   size={140}
                   level="H"
                 />

@@ -86,8 +86,12 @@ interface AppContextType {
   setTickets: (tickets: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void
   services: Service[]
   setServices: (services: Service[] | ((prev: Service[]) => Service[])) => void
+  fetchServices: () => Promise<void> // <--- AJOUTE CETTE LIGNE
+  fetchCounters: () => Promise<void> // Vérifie que cette ligne existe
   counters: Counter[]
   setCounters: (counters: Counter[] | ((prev: Counter[]) => Counter[])) => void
+  isBusy: boolean;
+  setIsBusy: (value: boolean) => void;
   agents: Agent[]
   setAgents: (agents: Agent[] | ((prev: Agent[]) => Agent[])) => void
   hospitalSettings: HospitalSettings
@@ -190,7 +194,7 @@ const [user, setUser] = useState<User | null>(() => {
     }
     return null;
   });
-
+const [isBusy, setIsBusy] = useState(false);
   useEffect(() => {
     if (user) {
       localStorage.setItem("app-user", JSON.stringify(user));
@@ -198,54 +202,96 @@ const [user, setUser] = useState<User | null>(() => {
       localStorage.removeItem("app-user");
     }
   }, [user]);
+// 1. Déclare la fonction avec useCallback pour éviter les re-renders inutiles
+const fetchServices = useCallback(async () => {
+  const { data, error } = await supabase.from("service").select("*");
+  if (error) {
+    console.error("Erreur chargement services:", error);
+  } else if (data) {
+    const mappedServices: Service[] = data.map((s: any) => ({
+      id: s.id,
+      name: s.nom,
+      description: s.description || "",
+      icon: s.icon || "LayoutGrid",
+      waitTime: s.wait_time || 0,
+      currentQueue: s.current_queue || 0,
+      isActive: s.is_active || false,
+      openTime: s.open_time || "08:00",
+      closeTime: s.close_time || "17:00"
+    }));
+    setServices(mappedServices);
+  }
+  setIsLoading(false);
+}, []); // Pas de dépendances
 
+// 2. Utilise-la dans ton useEffect
 useEffect(() => {
-  const fetchServices = async () => {
-    const { data, error } = await supabase
-      .from("service")
-      .select("*");
-
-    if (error) {
-      console.error("Erreur chargement services:", error);
-    } else if (data) {
-     
-      const mappedServices: Service[] = data.map((s: any) => ({
-        id: s.id,
-        name: s.nom,              
-        description: s.description || "",
-        icon: s.icon || "LayoutGrid",
-        waitTime: s.wait_time || 0,         // SQL 'wait_time' -> Interface 'waitTime'
-        currentQueue: s.current_queue || 0, // SQL 'current_queue' -> Interface 'currentQueue'
-        isActive: s.is_active || false,     // SQL 'is_active' -> Interface 'isActive'
-        openTime: s.open_time || "08:00",
-        closeTime: s.close_time || "17:00"
-      }));
-      
-      setServices(mappedServices);
-    }
-    
-    setIsLoading(false);
-  };
-
-  fetchServices();
+  fetchServices(); // Appel initial
 
   const channel = supabase
     .channel('schema-db-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, 
     () => {
-      fetchServices();
+      fetchServices(); // Mise à jour auto quand la DB change
     })
     .subscribe();
 
   return () => {
     supabase.removeChannel(channel);
   };
+}, [fetchServices]); // Ajoute fetchServices ici
+// 1. Ajoute cette fonction dans ton AppProvider
+const fetchCounters = useCallback(async () => {
+  const { data, error } = await supabase
+    .from("guichet")
+    .select("*, service(nom)"); // On récupère aussi le nom du service associé
+  if (error) {
+    console.error("Erreur chargement guichets:", error);
+  } else if (data) {
+    const formattedCounters: Counter[] = data.map((g: any) => ({
+      id: g.id,
+      name: g.numero,
+      number: parseInt(g.numero.replace(/\D/g, '')) || 0, // Extrait le chiffre du nom
+      serviceId: g.id_service,
+      serviceName: g.service?.name || "Non assigné",
+      agentId: g.id_agent_actuel,
+      isActive: g.statut === 'Actif',
+      ticketsServed: 0 // À lier plus tard avec une table statistiques
+    }));
+    setCounters(formattedCounters);
+  }
 }, []);
+
+// 2. Ajoute fetchCounters à ton useEffect de chargement
+useEffect(() => {
+  fetchServices();
+  fetchCounters();
+
+  // 1. Canal pour les Services
+  const channelServices = supabase.channel('schema-services')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, () => {
+      fetchServices();
+    })
+    .subscribe();
+
+  // 2. Canal pour les Guichets
+  const channelCounters = supabase.channel('schema-guichets')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'guichet' }, () => {
+      fetchCounters();
+    })
+    .subscribe();
+
+  // Nettoyage des deux canaux au démontage
+  return () => {
+    supabase.removeChannel(channelServices);
+    supabase.removeChannel(channelCounters);
+  };
+}, [fetchServices, fetchCounters]);
     const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
 const [services, setServices] = useState<Service[]>([]); 
-  const [counters, setCounters] = useState<Counter[]>(defaultCounters)
-  const [agents, setAgents] = useState<Agent[]>(defaultAgents)
+const [counters, setCounters] = useState<Counter[]>([]); // Était defaultCounters
+const [agents, setAgents] = useState<Agent[]>([]); // Était defaultAgents
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
   const loginAsRole = useCallback((role: UserRole, name?: string, firstName?: string, email?: string) => {
     const newUser: User = {
@@ -302,7 +348,6 @@ const [services, setServices] = useState<Service[]>([]);
     setTickets(prev => [...prev, newTicket])
     setCurrentTicket(newTicket)
     
-    // Update service queue count
     setServices(prev => prev.map(s => 
       s.id === service.id ? { ...s, currentQueue: s.currentQueue + 1 } : s
     ))
@@ -341,7 +386,7 @@ const [services, setServices] = useState<Service[]>([]);
     )
   }, [tickets, user])
 
-  // Agent functions
+
   const getCurrentAgent = useCallback(() => {
     if (!user || user.role !== "agent") return null
     return agents.find(a => a.id === user.id) || null
@@ -385,7 +430,7 @@ const [services, setServices] = useState<Service[]>([]);
       c.id === counter.id ? { ...c, currentTicket: updatedTicket } : c
     ))
 
-    // Update positions for remaining tickets
+
     setTickets(prev => prev.map(t => {
       if (t.service.id === counter.serviceId && t.status === "waiting" && t.position > nextTicket.position) {
         return { ...t, position: t.position - 1 }
@@ -437,7 +482,6 @@ const [services, setServices] = useState<Service[]>([]);
     ))
   }, [getAgentCounter])
 
-  // Admin functions
   const createService = useCallback((service: Omit<Service, "id">): Service => {
     const newService: Service = {
       ...service,
@@ -601,17 +645,16 @@ const [services, setServices] = useState<Service[]>([]);
       firstName: data.nom.split(' ')[0] || "",
       name: data.nom.split(' ')[1] || "",
       role: data.role as UserRole,
-      photo: data.photo_url || "", // <-- C'est ici que l'image arrive !
+      photo: data.photo_url || "", 
+      phone: data.telephone || "", // <--- AJOUTE CETTE LIGNE
     });
   }
 }, []);
 useEffect(() => {
-  // Au démarrage, on vérifie si une session existe
   supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) loadUserProfile(session.user.id);
   });
 
-  // On écoute les changements (login/logout)
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     if (event === 'SIGNED_IN' && session) {
       loadUserProfile(session.user.id);
@@ -633,9 +676,10 @@ useEffect(() => {
         tickets,
         setTickets,
         services,
-
         setServices,
+        fetchServices,
         counters,
+        fetchCounters,
         setCounters,
         agents,
         setAgents,
@@ -662,6 +706,8 @@ useEffect(() => {
         createCounter,
         updateCounter,
         deleteCounter,
+         isBusy,
+         setIsBusy,
         createAgent,
         updateAgent,
         deleteAgent,

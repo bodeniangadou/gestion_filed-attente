@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { motion } from "framer-motion"
+import { toast } from "sonner"
 import { Plus, Monitor, Stethoscope, MoreVertical, Link2, Mail, ShieldCheck, ShieldAlert } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,41 +14,100 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useApp, Agent } from "@/lib/app-context"
-
+import { supabase } from "@/lib/supabase" 
+interface AgentFormState {
+  name: string;
+  firstName: string;
+  email: string;
+  password: string;
+  telephone: string;
+  serviceId: string;
+  counterId: string;
+}
 export  function AgentsView() {
   const { agents, setAgents, services, counters } = useApp()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
-  
-  const [newAgent, setNewAgent] = useState({ 
+  const [newAgent, setNewAgent] = useState<AgentFormState>({ 
     name: "", 
     firstName: "", 
     email: "",
     password: "",
+    telephone: "",
     serviceId: "", 
     counterId: "" 
   })
-
-  const handleCreate = () => {
-    if (!newAgent.name || !newAgent.firstName || !newAgent.email || !newAgent.password) return
-    
-    const agent: Agent = {
-      id: `agent-${Date.now()}`,
-      name: newAgent.name,
-      firstName: newAgent.firstName,
-      email: newAgent.email,
-      role: "agent",
-      isOnline: true,
-      serviceId: newAgent.serviceId || undefined,
-      counterId: newAgent.counterId || undefined,
-      ticketsServedToday: 0,
-    }
-    
-    setAgents([...agents, agent])
-    setShowCreateModal(false)
-    resetForm()
+const [isBusy, setIsBusy] = useState(false);
+ const handleCreate = async () => {
+  setIsBusy(true); // On dit : "Ne me dérange pas, je crée un agent"
+  // 1. Validation de base
+  if (!newAgent.name || !newAgent.firstName || !newAgent.email || !newAgent.telephone || !newAgent.password) {
+    toast.error("Tous les champs sont requis");
+    return;
   }
+
+  // 2. Vérification stricte des doublons
+  // On utilise .or() pour vérifier les deux colonnes simultanément
+  const { data: existingUsers, error: fetchError } = await supabase
+    .from("utilisateur")
+    .select("email, telephone")
+    .or(`email.eq.${newAgent.email},telephone.eq.${newAgent.telephone}`);
+
+  if (fetchError) {
+    console.error("Erreur vérification:", fetchError);
+    return;
+  }
+
+  // Si on trouve un résultat dans la liste, on bloque
+  if (existingUsers && existingUsers.length > 0) {
+    const isEmailTaken = existingUsers.some(u => u.email === newAgent.email);
+    const isPhoneTaken = existingUsers.some(u => u.telephone === newAgent.telephone);
+    
+    if (isEmailTaken) toast.error("Cet email existe déjà.");
+    if (isPhoneTaken) toast.error("Ce numéro existe déjà.");
+    return; // <--- C'est ce 'return' qui empêche la suite de s'exécuter
+  }
+
+  const { data: { session: adminSession } } = await supabase.auth.getSession();
+  // 3. Si on arrive ici, c'est qu'il n'y a PAS de doublon, on peut continuer
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email: newAgent.email,
+    password: newAgent.password,
+  });
+
+  if (authError) {
+    toast.error("Erreur Auth: " + authError.message);
+    return;
+  }
+
+  if (authData.user) {
+    const { error: insertError } = await supabase
+      .from("utilisateur")
+      .insert([{
+        id: authData.user.id,
+        nom: `${newAgent.firstName} ${newAgent.name}`,
+        email: newAgent.email,
+        telephone: newAgent.telephone,
+        role: "agent",
+        disponibilite: true
+      }]);
+
+    if (insertError) {
+      toast.error("Erreur enregistrement profil");
+      console.error(insertError);
+    } else {
+      toast.success("Agent créé avec succès !");
+      if (adminSession) {
+        await supabase.auth.setSession(adminSession);
+      }
+      
+      setShowCreateModal(false);
+      resetForm();
+    }
+  }
+  setIsBusy(false);
+};
 
   const handleAssign = () => {
     if (!selectedAgent) return
@@ -69,20 +129,21 @@ export  function AgentsView() {
   }
 
   const openAssignModal = (agent: Agent) => {
-    setSelectedAgent(agent)
-    setNewAgent({ 
-      name: "", 
-      firstName: "", 
-      email: agent.email || "",
-      password: "", 
-      serviceId: agent.serviceId || "", 
-      counterId: agent.counterId || "" 
-    })
-    setShowAssignModal(true)
-  }
+  setSelectedAgent(agent)
+  setNewAgent({ 
+    name: agent.name || "", 
+    firstName: agent.firstName || "", 
+    email: agent.email || "",
+    password: "", 
+    telephone: agent.telephone || "", 
+    serviceId: agent.serviceId || "", 
+    counterId: agent.counterId || "" 
+  })
+  setShowAssignModal(true)
+}
 
   const resetForm = () => {
-    setNewAgent({ name: "", firstName: "", email: "", password: "", serviceId: "", counterId: "" })
+    setNewAgent({ name: "", firstName: "", email: "", password: "", telephone: "", serviceId: "", counterId: "" })
   }
 
   const getServiceName = (serviceId?: string) => {
@@ -273,7 +334,14 @@ export  function AgentsView() {
               <FieldLabel>Adresse Email professionnel</FieldLabel>
               <Input type="email" placeholder="m.diarra@hopital.com" value={newAgent.email} onChange={(e) => setNewAgent({ ...newAgent, email: e.target.value })} />
             </Field>
-
+            <Field>
+  <FieldLabel>Numéro de téléphone</FieldLabel>
+  <Input 
+    placeholder="+223 XX XX XX XX" 
+    value={newAgent.telephone} 
+    onChange={(e) => setNewAgent({ ...newAgent, telephone: e.target.value })} 
+  />
+</Field>
             <Field>
               <FieldLabel>Mot de passe temporaire</FieldLabel>
               <Input type="password" placeholder="••••••••" value={newAgent.password} onChange={(e) => setNewAgent({ ...newAgent, password: e.target.value })} />

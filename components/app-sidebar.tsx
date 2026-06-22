@@ -1,8 +1,8 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { usePathname } from "next/navigation" // 👈 Pour détecter l'URL active
-import Link from "next/link"                 // 👈 Pour la navigation par URL
+import { usePathname } from "next/navigation" 
+import Link from "next/link"                 
 import { 
   LayoutDashboard, 
   Stethoscope, 
@@ -25,11 +25,10 @@ import { Separator } from "@/components/ui/separator"
 interface NavItem {
   icon: React.ReactNode
   label: string
-  href: string // 👈 Contiendra maintenant le vrai chemin URL
+  href: string 
   roles: UserRole[]
 }
 
-// Mises à jour des chemins pour correspondre exactement à vos dossiers sous /admin
 const navItems = [
   // --- Admin ---
   { icon: <LayoutDashboard />, label: "Dashboard", href: "/admin", roles: ["admin"] },
@@ -56,12 +55,10 @@ const navItems = [
 
 export function AppSidebar() {
   const { user, logout } = useApp()
-  const pathname = usePathname() // 👈 Récupère l'URL courante (ex: /admin/services)
+  const pathname = usePathname()
  const filteredItems = navItems.filter((item) => {
-  // 1. L'utilisateur doit avoir le rôle requis pour voir ce lien
   const hasRole = user && item.roles.includes(user.role);
   
-  // 2. Le lien doit commencer par le rôle de l'utilisateur (ex: '/admin')
   const isCorrectSpace = item.href.startsWith(`/${user?.role}`);
 
   return hasRole && isCorrectSpace;

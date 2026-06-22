@@ -56,6 +56,7 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
 };
 
   const navItems = getNavItems()
+  if (!navItems || navItems.length === 0) return null;
 
   return (
     <motion.nav

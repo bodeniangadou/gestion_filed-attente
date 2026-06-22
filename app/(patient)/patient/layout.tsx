@@ -9,11 +9,12 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function PatientLayout({ children }: { children: React.ReactNode }) {
-  const { user } = useApp();
-  const router = useRouter();
+const { user, isBusy } = useApp(); 
+   const router = useRouter();
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
+    if (isBusy) return;
     if (user) {
       const isAuthorized = user.role === "patient" || user.role === "visitor";
       
@@ -29,7 +30,7 @@ export default function PatientLayout({ children }: { children: React.ReactNode 
     } else if (user === null) {
       router.push("/");
     }
-  }, [user, router]);
+  }, [user, router , isBusy]);
 
   if (!isReady) {
     return (

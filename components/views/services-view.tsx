@@ -67,26 +67,31 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   }
 
   // INTERCEPTION AUTOMATIQUE DU PARAMÈTRE URL (?scan=...)
-  useEffect(() => {
-    const scannedServiceParam = searchParams.get("scan")
-    
-    if (scannedServiceParam && services.length > 0) {
-      const targetService = services.find(
-        s => s.id === scannedServiceParam || s.name.toLowerCase() === scannedServiceParam.toLowerCase()
-      )
+ useEffect(() => {
+  const serviceId = searchParams.get("scan") || searchParams.get("service");
 
-      if (targetService) {
-        if (targetService.isActive) {
-          handleTakeTicket(targetService)
-        } else {
-          alert(`Le service ${targetService.name} est actuellement fermé ou indisponible.`)
-        }
+  // AJOUT : Vérification si le service est déjà sélectionné pour éviter la boucle
+  if (serviceId && services.length > 0 && !selectedService) {
+    const targetService = services.find(
+      s => s.id === serviceId || s.name.toLowerCase() === serviceId.toLowerCase()
+    );
+
+    if (targetService) {
+      if (targetService.isActive) {
+        // On exécute l'action
+        handleTakeTicket(targetService);
+        
+        // On nettoie l'URL IMMÉDIATEMENT pour que ce bloc ne se relance plus
+        router.replace(window.location.pathname);
+      } else {
+        alert(`Le service ${targetService.name} est fermé.`);
+        router.replace(window.location.pathname);
       }
-     
-      const currentPath = window.location.pathname
-      router.replace(currentPath)
     }
-  }, [searchParams, services, router])
+  }
+  // On retire 'router' et 'searchParams' des dépendances si nécessaire, 
+  // mais ici le 'selectedService' va bloquer la boucle.
+}, [searchParams, services, selectedService]);
 
   // GESTION DU SCANNER INTERNE (CAMÉRA)
   useEffect(() => {

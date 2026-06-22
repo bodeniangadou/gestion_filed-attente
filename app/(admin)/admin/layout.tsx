@@ -25,7 +25,7 @@ useEffect(() => {
 });
         setTimeout(() => {
         router.push(`/${user.role}`);
-      }, 50000);
+      }, 500);
       } else {
         setIsReady(true);
       }

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState , useEffect } from "react"
+import { supabase } from "@/lib/supabase"; // Assure-toi d'importer ton client supabase
+import { toast } from "sonner";
 import { motion } from "framer-motion"
 import { Plus, Monitor, User, Power, MoreVertical, Edit2, Trash2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -15,33 +17,96 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useApp } from "@/lib/app-context"
 
 export   function CountersView() {
-  const { counters, setCounters, services, agents } = useApp()
+const { counters, services, setCounters , agents, fetchServices, fetchCounters } = useApp()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCounter, setNewCounter] = useState({ name: "", serviceId: "", agentId: "" })
+const [showEditModal, setShowEditModal] = useState(false);
+const [editingCounter, setEditingCounter] = useState<{ id: string; name: string } | null>(null);
+const handleUpdate = async () => {
+  if (!editingCounter?.name) return;
 
-  const toggleCounter = (id: string) => {
+  const { error } = await supabase
+    .from("guichet")
+    .update({ numero: editingCounter.name })
+    .eq("id", editingCounter.id);
+
+  if (error) {
+    toast.error("Erreur lors de la modification");
+  } else {
+    toast.success("Nom du guichet mis à jour !");
+    // Mise à jour de l'affichage localement
+    setCounters(counters.map(c => 
+      c.id === editingCounter.id ? { ...c, name: editingCounter.name } : c
+    ));
+    setShowEditModal(false);
+  }
+};
+ const toggleCounter = async (id: string, currentStatus: boolean) => {
+    // 1. Calcul du nouveau statut
+    const newStatus = !currentStatus;
+    const newStatusText = newStatus ? 'Actif' : 'Inactif';
+
+    // 2. Mise à jour optimiste (on change l'UI tout de suite pour la fluidité)
     setCounters(
       counters.map(c => 
-        c.id === id ? { ...c, isActive: !c.isActive } : c
+        c.id === id ? { ...c, isActive: newStatus } : c
       )
-    )
+    );
+
+    // 3. Appel Supabase pour persister le changement
+    const { error } = await supabase
+      .from("guichet")
+      .update({ statut: newStatusText })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Erreur mise à jour:", error);
+      toast.error("Échec de la mise à jour du statut.");
+      
+      // En cas d'erreur, on annule le changement local
+      setCounters(
+        counters.map(c => 
+          c.id === id ? { ...c, isActive: currentStatus } : c
+        )
+      );
+    } else {
+      toast.success(`Guichet ${newStatusText.toLowerCase()} avec succès.`);
+    }
+  };
+useEffect(() => {
+    fetchServices();
+    fetchCounters();
+  }, [fetchServices, fetchCounters]);
+ const handleCreate = async () => {
+  if (!newCounter.name || !newCounter.serviceId) {
+    toast.error("Veuillez remplir le nom et le service.");
+    return;
   }
 
-  const handleCreate = () => {
-    if (!newCounter.name || !newCounter.serviceId) return
-    
-    const counter = {
-      id: `counter-${Date.now()}`,
-      name: newCounter.name,
-      serviceId: newCounter.serviceId,
-      agentId: newCounter.agentId || undefined,
-      isActive: false,
-    }
-    
-    setCounters([...counters, counter])
-    setShowCreateModal(false)
-    setNewCounter({ name: "", serviceId: "", agentId: "" })
+  // Préparation de l'objet selon ta table
+  const counterData = {
+    numero: newCounter.name,
+    id_service: newCounter.serviceId,
+    id_agent_actuel: newCounter.agentId || null, 
+    statut: 'Inactif'
+  };
+
+  const { data, error } = await supabase
+    .from("guichet")
+    .insert([counterData])
+    .select();
+
+  if (error) {
+    console.error("Erreur SQL:", error);
+    toast.error("Erreur lors de la création du guichet.");
+  } else {
+    toast.success("Guichet créé avec succès !");
+    setCounters([...counters, { ...data[0], name: data[0].numero, isActive: true }]);
+    setShowCreateModal(false);
+    setNewCounter({ name: "", serviceId: "", agentId: "" });
+    setNewCounter({ name: "", serviceId: "", agentId: "" });
   }
+};
 
   const getServiceName = (serviceId: string) => {
     return services.find(s => s.id === serviceId)?.name || "Non assigné"
@@ -52,6 +117,14 @@ export   function CountersView() {
     const agent = agents.find(a => a.id === agentId)
     return agent ? `${agent.firstName} ${agent.name}` : "Non assigné"
   }
+  // Liste des agents du service choisi qui n'ont pas encore de guichet
+const availableAgents = agents.filter(agent => {
+  // On vérifie si l'agent est déjà dans la liste des guichets actifs
+  const isAlreadyAssigned = counters.some(c => c.agentId === agent.id);
+  
+  // L'agent est disponible s'il n'est assigné nulle part
+  return !isAlreadyAssigned;
+});
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -131,10 +204,13 @@ export   function CountersView() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
-                          <Edit2 className="mr-2 size-4" />
-                          Modifier
-                        </DropdownMenuItem>
+                       <DropdownMenuItem onClick={() => {
+  setEditingCounter({ id: counter.id, name: counter.name });
+  setShowEditModal(true);
+}}>
+  <Edit2 className="mr-2 size-4" />
+  Modifier
+</DropdownMenuItem>
                         <DropdownMenuItem className="text-destructive">
                           <Trash2 className="mr-2 size-4" />
                           Supprimer
@@ -158,10 +234,10 @@ export   function CountersView() {
                     </Badge>
                     <div className="flex items-center gap-2">
                       <Power className={`size-4 ${counter.isActive ? "text-emerald" : "text-muted-foreground"}`} />
-                      <Switch
-                        checked={counter.isActive}
-                        onCheckedChange={() => toggleCounter(counter.id)}
-                      />
+                     <Switch
+  checked={counter.isActive}
+  onCheckedChange={() => toggleCounter(counter.id, counter.isActive)}
+/>
                     </div>
                   </div>
                 </CardContent>
@@ -170,9 +246,33 @@ export   function CountersView() {
           ))}
         </div>
       </div>
-
+ <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle>Modifier le guichet</DialogTitle>
+    </DialogHeader>
+    <FieldGroup className="space-y-4">
+      <Field>
+        <FieldLabel>Nouveau nom</FieldLabel>
+        <Input
+          value={editingCounter?.name || ""}
+          onChange={(e) => setEditingCounter({ ...editingCounter!, name: e.target.value })}
+        />
+      </Field>
+    </FieldGroup>
+    <div className="mt-6 flex gap-3">
+      <Button variant="outline" className="flex-1" onClick={() => setShowEditModal(false)}>Annuler</Button>
+      <Button className="flex-1 bg-emerald" onClick={handleUpdate}>Enregistrer</Button>
+    </div>
+  </DialogContent>
+</Dialog>
       {/* Create Modal */}
-      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+      <Dialog open={showCreateModal} onOpenChange={(open) => {
+    setShowCreateModal(open);
+    if (!open) {
+      // Vide les champs dès que le modal se ferme
+      setNewCounter({ name: "", serviceId: "", agentId: "" });
+    }}}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nouveau guichet</DialogTitle>
@@ -209,23 +309,28 @@ export   function CountersView() {
             </Field>
 
             <Field>
-              <FieldLabel>Agent assigné (optionnel)</FieldLabel>
-              <Select 
-                value={newCounter.agentId}
-                onValueChange={(value) => setNewCounter({ ...newCounter, agentId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un agent" />
-                </SelectTrigger>
-                <SelectContent>
-                  {agents.map((agent) => (
-                    <SelectItem key={agent.id} value={agent.id}>
-                      {agent.firstName} {agent.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+  <FieldLabel>Agent assigné (optionnel)</FieldLabel>
+  <Select 
+    disabled={!newCounter.serviceId} // Bloqué tant qu'un service n'est pas choisi
+    value={newCounter.agentId}
+    onValueChange={(value) => setNewCounter({ ...newCounter, agentId: value })}
+  >
+    <SelectTrigger>
+      <SelectValue placeholder={!newCounter.serviceId ? "Sélectionnez d'abord un service" : "Choisir un agent disponible"} />
+    </SelectTrigger>
+    <SelectContent>
+      {availableAgents.length > 0 ? (
+        availableAgents.map((agent) => (
+          <SelectItem key={agent.id} value={agent.id}>
+            {agent.firstName} {agent.name}
+          </SelectItem>
+        ))
+      ) : (
+        <div className="p-2 text-sm text-muted-foreground">Aucun agent disponible pour ce service</div>
+      )}
+    </SelectContent>
+  </Select>
+</Field>
           </FieldGroup>
 
           <div className="mt-6 flex gap-3">
