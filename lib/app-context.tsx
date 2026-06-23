@@ -46,14 +46,12 @@ export interface Ticket {
 
 export interface Counter {
   id: string
-  name: string
-  number: number
+  name: string      // "Guichet A1"
+  number: string    // Garde le numéro comme string (ex: "A1")
   serviceId: string
   serviceName: string
-  agentId?: string
-  agentName?: string
+  id_agent_actuel?: string | null 
   isActive: boolean
-  currentTicket?: Ticket
   ticketsServed: number
 }
 
@@ -63,6 +61,7 @@ export interface Agent extends User {
   serviceId?: string
   serviceName?: string
   isOnline: boolean
+  est_banni: boolean; 
   ticketsServedToday: number
 }
 
@@ -86,14 +85,15 @@ interface AppContextType {
   setTickets: (tickets: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void
   services: Service[]
   setServices: (services: Service[] | ((prev: Service[]) => Service[])) => void
-  fetchServices: () => Promise<void> // <--- AJOUTE CETTE LIGNE
-  fetchCounters: () => Promise<void> // Vérifie que cette ligne existe
+  fetchServices: () => Promise<void> 
+  fetchCounters: () => Promise<void> 
   counters: Counter[]
   setCounters: (counters: Counter[] | ((prev: Counter[]) => Counter[])) => void
   isBusy: boolean;
   setIsBusy: (value: boolean) => void;
   agents: Agent[]
   setAgents: (agents: Agent[] | ((prev: Agent[]) => Agent[])) => void
+  fetchAgents: () => Promise<void> 
   hospitalSettings: HospitalSettings
   setHospitalSettings: (settings: HospitalSettings) => void
   
@@ -158,10 +158,10 @@ const defaultCounters: Counter[] = [
 ]
 
 const defaultAgents: Agent[] = [
-  { id: "a1", name: "Diallo", firstName: "Mamadou", email: "m.diallo@hopitalmali.ml", role: "agent", counterId: "c1", counterName: "Guichet A1", serviceId: "s1", serviceName: "Consultation Generale", isOnline: true, ticketsServedToday: 23 },
-  { id: "a2", name: "Traore", firstName: "Fatou", email: "f.traore@hopitalmali.ml", role: "agent", counterId: "c3", counterName: "Guichet B1", serviceId: "s2", serviceName: "Urgences", isOnline: true, ticketsServedToday: 15 },
-  { id: "a3", name: "Konate", firstName: "Ibrahim", email: "i.konate@hopitalmali.ml", role: "agent", counterId: "c4", counterName: "Guichet C1", serviceId: "s3", serviceName: "Radiologie", isOnline: true, ticketsServedToday: 18 },
-  { id: "a4", name: "Coulibaly", firstName: "Aminata", email: "a.coulibaly@hopitalmali.ml", role: "agent", isOnline: false, ticketsServedToday: 0 },
+  { id: "a1", name: "Diallo", firstName: "Mamadou", email: "m.diallo@hopitalmali.ml", role: "agent", counterId: "c1", counterName: "Guichet A1", serviceId: "s1", serviceName: "Consultation Generale", isOnline: true, ticketsServedToday: 23 , est_banni: true},
+  { id: "a2", name: "Traore", firstName: "Fatou", email: "f.traore@hopitalmali.ml", role: "agent", counterId: "c3", counterName: "Guichet B1", serviceId: "s2", serviceName: "Urgences", isOnline: true, ticketsServedToday: 15 , est_banni: true },
+  { id: "a3", name: "Konate", firstName: "Ibrahim", email: "i.konate@hopitalmali.ml", role: "agent", counterId: "c4", counterName: "Guichet C1", serviceId: "s3", serviceName: "Radiologie", isOnline: true, ticketsServedToday: 18 , est_banni: true },
+  { id: "a4", name: "Coulibaly", firstName: "Aminata", email: "a.coulibaly@hopitalmali.ml", role: "agent", isOnline: false, ticketsServedToday: 0 , est_banni: true},
 ]
 
 const defaultTickets: Ticket[] = [
@@ -184,9 +184,9 @@ const defaultHospitalSettings: HospitalSettings = {
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 import {  useEffect } from "react"
-import { supabase } from "@/lib/supabase"; // Importe ton client Supabase
+import { supabase } from "@/lib/supabase"; 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true); // Ajoute ceci
+  const [isLoading, setIsLoading] = useState(true); 
 const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("app-user");
@@ -202,7 +202,6 @@ const [isBusy, setIsBusy] = useState(false);
       localStorage.removeItem("app-user");
     }
   }, [user]);
-// 1. Déclare la fonction avec useCallback pour éviter les re-renders inutiles
 const fetchServices = useCallback(async () => {
   const { data, error } = await supabase.from("service").select("*");
   if (error) {
@@ -222,76 +221,105 @@ const fetchServices = useCallback(async () => {
     setServices(mappedServices);
   }
   setIsLoading(false);
-}, []); // Pas de dépendances
+}, []); 
 
-// 2. Utilise-la dans ton useEffect
 useEffect(() => {
-  fetchServices(); // Appel initial
+  fetchServices(); 
 
   const channel = supabase
     .channel('schema-db-changes')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, 
     () => {
-      fetchServices(); // Mise à jour auto quand la DB change
+      fetchServices(); 
     })
     .subscribe();
 
   return () => {
     supabase.removeChannel(channel);
   };
-}, [fetchServices]); // Ajoute fetchServices ici
-// 1. Ajoute cette fonction dans ton AppProvider
+}, [fetchServices]); 
 const fetchCounters = useCallback(async () => {
   const { data, error } = await supabase
     .from("guichet")
-    .select("*, service(nom)"); // On récupère aussi le nom du service associé
+    .select("*, service(nom)"); 
+    
   if (error) {
     console.error("Erreur chargement guichets:", error);
   } else if (data) {
     const formattedCounters: Counter[] = data.map((g: any) => ({
       id: g.id,
-      name: g.numero,
-      number: parseInt(g.numero.replace(/\D/g, '')) || 0, // Extrait le chiffre du nom
+      name: g.numero,        // "A1"
+      number: g.numero,      // Garde la chaîne de caractères telle quelle
       serviceId: g.id_service,
-      serviceName: g.service?.name || "Non assigné",
-      agentId: g.id_agent_actuel,
+      serviceName: g.service?.nom || "Non assigné",
+      id_agent_actuel: g.id_agent_actuel,
       isActive: g.statut === 'Actif',
-      ticketsServed: 0 // À lier plus tard avec une table statistiques
+      ticketsServed: 0 
     }));
     setCounters(formattedCounters);
   }
 }, []);
+const fetchAgents = useCallback(async () => {
+  const { data, error } = await supabase
+    .from("utilisateur")
+    .select("*")
+    .eq("role", "agent");
 
-// 2. Ajoute fetchCounters à ton useEffect de chargement
+  if (error) {
+    console.error("Erreur chargement agents:", error);
+    return;
+  }
+  
+  if (data) {
+    const mappedAgents: Agent[] = data.map((u: any) => ({
+      id: u.id,
+      name: u.nom?.split(' ')[1] || "",
+      firstName: u.nom?.split(' ')[0] || "",
+      email: u.email,
+      telephone: u.telephone,
+      role: "agent",
+      isOnline: u.disponibilite ?? true,
+      est_banni: u.est_banni ?? false, // Garantir une valeur par défaut
+      ticketsServedToday: 0
+    }));
+    setAgents(mappedAgents);
+  }
+}, []);
 useEffect(() => {
   fetchServices();
   fetchCounters();
+  fetchAgents(); 
 
-  // 1. Canal pour les Services
+
+  const channelAgents = supabase.channel('schema-agents')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'utilisateur' }, () => {
+      fetchAgents(); 
+    })
+    .subscribe();
+
   const channelServices = supabase.channel('schema-services')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, () => {
       fetchServices();
     })
     .subscribe();
 
-  // 2. Canal pour les Guichets
   const channelCounters = supabase.channel('schema-guichets')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'guichet' }, () => {
       fetchCounters();
     })
     .subscribe();
 
-  // Nettoyage des deux canaux au démontage
   return () => {
     supabase.removeChannel(channelServices);
     supabase.removeChannel(channelCounters);
+    supabase.removeChannel(channelAgents);
   };
-}, [fetchServices, fetchCounters]);
+}, [fetchServices, fetchCounters, fetchAgents]);
     const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
 const [services, setServices] = useState<Service[]>([]); 
-const [counters, setCounters] = useState<Counter[]>([]); // Était defaultCounters
-const [agents, setAgents] = useState<Agent[]>([]); // Était defaultAgents
+const [counters, setCounters] = useState<Counter[]>([]); 
+const [agents, setAgents] = useState<Agent[]>([]); 
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
   const loginAsRole = useCallback((role: UserRole, name?: string, firstName?: string, email?: string) => {
     const newUser: User = {
@@ -622,15 +650,7 @@ const [agents, setAgents] = useState<Agent[]>([]); // Était defaultAgents
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-  // useEffect(() => {
-  //   setUser({
-  //     id: "admin1",
-  //     name: "Admin",
-  //     firstName: "Super",
-  //     email: "admin@hopitalmali.ml",
-  //     role: "admin",
-  //   });
-  // }, []);
+  
   const loadUserProfile = useCallback(async (userId: string) => {
   const { data, error } = await supabase
     .from("utilisateur")
@@ -646,7 +666,7 @@ const [agents, setAgents] = useState<Agent[]>([]); // Était defaultAgents
       name: data.nom.split(' ')[1] || "",
       role: data.role as UserRole,
       photo: data.photo_url || "", 
-      phone: data.telephone || "", // <--- AJOUTE CETTE LIGNE
+      phone: data.telephone || "", 
     });
   }
 }, []);
@@ -682,6 +702,7 @@ useEffect(() => {
         fetchCounters,
         setCounters,
         agents,
+        fetchAgents,
         setAgents,
         hospitalSettings,
         setHospitalSettings,
