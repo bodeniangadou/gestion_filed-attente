@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Ticket } from "@/lib/app-context";
 import {
   Phone,
   PhoneOff,
@@ -18,159 +17,211 @@ import {
   Star,
   Play,
 } from "lucide-react";
-
-const ticketsSimules = [
-  {
-    id: "1",
-    numero: "C045",
-    nom: "Aminata Keita",
-    tempsAttenteEstime: 12,
-    arrivee: Date.now() - 1000 * 60 * 14,
-    prioritaire: false,
-  },
-  {
-    id: "2",
-    numero: "C046",
-    nom: "Ibrahim Traoré",
-    tempsAttenteEstime: 8,
-    arrivee: Date.now() - 1000 * 60 * 9,
-    prioritaire: false,
-  },
-  {
-    id: "3",
-    numero: "C047",
-    nom: "Fatou Diallo",
-    tempsAttenteEstime: 5,
-    arrivee: Date.now() - 1000 * 60 * 6,
-    prioritaire: false,
-  },
-  {
-    id: "4",
-    numero: "C048",
-    nom: "Moussa Konaté",
-    tempsAttenteEstime: 3,
-    arrivee: Date.now() - 1000 * 60 * 4,
-    prioritaire: false,
-  },
-  {
-    id: "5",
-    numero: "C049",
-    nom: "Mariam Coulibaly",
-    tempsAttenteEstime: 1,
-    arrivee: Date.now() - 1000 * 60 * 2,
-    prioritaire: false,
-  },
-];
+import { useApp } from "@/lib/app-context";
+import type { Ticket } from "@/lib/app-context";
 
 export default function ConsoleAppel() {
-const [patientActuel, setPatientActuel] = useState<Ticket | null>(null);
-  const [fileAttente, setFileAttente] = useState(ticketsSimules);
-  const [guichetOuvert, setGuichetOuvert] = useState(true);
-  const [sonActif, setSonActif] = useState(true);
-  const [nbTraites, setNbTraites] = useState(0);
+  // --- Récupération du contexte ---
+  const {
+    getAgentQueue,
+    callNextPatient,
+    markAbsent,
+    recallPatient,
+    completeService,
+    toggleCounter,
+    getAgentCounter,
+    getCurrentAgent,
+    tickets,
+    setTickets,
+  } = useApp();
 
+  const agent = getCurrentAgent();
+  const counter = getAgentCounter();
+  const fileAttente = getAgentQueue();
+
+  // --- États locaux pour l'UI ---
+  const [patientActuel, setPatientActuel] = useState<Ticket | null>(null);
   const [consultationActive, setConsultationActive] = useState(false);
-const [debutConsultation, setDebutConsultation] = useState<number | null>(null);
-const [dureeConsultationReelle, setDureeConsultationReelle] = useState<number | null>(0);
+  const [debutConsultation, setDebutConsultation] = useState<number | null>(
+    null,
+  );
+  const [dureeConsultationReelle, setDureeConsultationReelle] = useState<
+    number | null
+  >(0);
+  const [nbTraites, setNbTraites] = useState(0);
+  const [sonActif, setSonActif] = useState(true);
   const [modalPriorite, setModalPriorite] = useState(false);
   const [numeroPriorite, setNumeroPriorite] = useState("");
   const [annonceKey, setAnnonceKey] = useState(0);
 
-  // Ajoute <SpeechSynthesisUtterance> entre les chevrons
-const syntheseVocale = useRef<SpeechSynthesisUtterance | null>(null);
+  // Synthèse vocale
+  const syntheseVocale = useRef<SpeechSynthesisUtterance | null>(null);
 
-useEffect(() => {
-  const utterance = new SpeechSynthesisUtterance();
-  utterance.lang = "fr-FR";
-  utterance.rate = 0.9;
-  
-  syntheseVocale.current = utterance;
-}, []);
-
+  // --- Effets ---
   useEffect(() => {
-   let intervalle: ReturnType<typeof setInterval> | undefined;
-  if (consultationActive && debutConsultation) {
-    intervalle = setInterval(() => {
-      setDureeConsultationReelle(
-        Math.floor((Date.now() - debutConsultation) / 1000),
-      );
-    }, 1000);
-  }
+    const utterance = new SpeechSynthesisUtterance();
+    utterance.lang = "fr-FR";
+    utterance.rate = 0.9;
+    syntheseVocale.current = utterance;
+  }, []);
 
-  return () => {
-    if (intervalle) clearInterval(intervalle);
+  // Timer de consultation
+  useEffect(() => {
+    let intervalle: ReturnType<typeof setInterval> | undefined;
+    if (consultationActive && debutConsultation) {
+      intervalle = setInterval(() => {
+        setDureeConsultationReelle(
+          Math.floor((Date.now() - debutConsultation) / 1000),
+        );
+      }, 1000);
+    }
+    return () => {
+      if (intervalle) clearInterval(intervalle);
+    };
+  }, [consultationActive, debutConsultation]);
+
+  // Mise à jour du patient actuel à partir du contexte
+  useEffect(() => {
+    const current = tickets.find(
+      (t) =>
+        (t.status === "called" || t.status === "serving") &&
+        t.service.id === counter?.serviceId,
+    );
+    if (current) {
+      setPatientActuel(current);
+      if (current.status === "serving") {
+        setConsultationActive(true);
+        if (!debutConsultation) setDebutConsultation(Date.now());
+      } else {
+        setConsultationActive(false);
+        setDebutConsultation(null);
+        setDureeConsultationReelle(0);
+      }
+    } else {
+      setPatientActuel(null);
+      setConsultationActive(false);
+      setDebutConsultation(null);
+      setDureeConsultationReelle(0);
+    }
+  }, [tickets, counter, debutConsultation]);
+
+  // --- Fonction de formatage pour la voix (lecture exacte) ---
+  const formaterPourVoix = (texte: string): string => {
+    if (!texte) return "disponible";
+    // Ajoute un espace entre les lettres majuscules consécutives
+    // Ex: "CG" → "C G", "CHIR" → "C H I R"
+    return texte.replace(/([A-Z])([A-Z])/g, "$1 $2");
   };
-}, [consultationActive, debutConsultation]);
 
+  // --- Fonctions vocales ---
   const parler = (message: string) => {
-  if (!sonActif) return;
-  if (syntheseVocale.current) {
-    syntheseVocale.current.text = message;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(syntheseVocale.current);
-  }
-};
-
-const annoncerPatient = (ticket: Ticket) => {
-  const phrase = `Ticket ${ticket.number}, veuillez vous présenter au guichet ${ticket.counterName || "disponible"}.`;
-  parler(phrase);
-};
-
-  const appelerSuivant = () => {
-    if (!guichetOuvert || fileAttente.length === 0) return;
-    const prochain = fileAttente[0];
-    setPatientActuel(prochain);
-    setFileAttente(fileAttente.slice(1));
-    setConsultationActive(false);
-    setDebutConsultation(null);
-    setDureeConsultationReelle(0);
-    setAnnonceKey(annonceKey + 1);
-    annoncerPatient(prochain);
+    if (!sonActif) return;
+    if (syntheseVocale.current) {
+      syntheseVocale.current.text = message;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(syntheseVocale.current);
+    }
   };
 
+  const annoncerPatient = (ticket: Ticket) => {
+    const nomGuichet = ticket.counterName || counter?.name || "disponible";
+    const nomPourVoix = formaterPourVoix(nomGuichet);
+    const phrase = `Ticket ${ticket.number}, veuillez vous présenter au guichet ${nomPourVoix}.`;
+    parler(phrase);
+  };
+
+  // --- Appeler le prochain patient (async) ---
+  const appelerSuivant = async () => {
+    if (!counter?.isActive || fileAttente.length === 0) return;
+    const prochain = await callNextPatient(); // ✅ await
+    if (prochain) {
+      setPatientActuel(prochain);
+      setConsultationActive(false);
+      setDebutConsultation(null);
+      setDureeConsultationReelle(0);
+      setAnnonceKey(annonceKey + 1);
+      annoncerPatient(prochain);
+    }
+  };
+
+  // --- Démarrer la consultation ---
   const demarrerConsultation = () => {
-    if (!patientActuel || consultationActive) return;
-    setConsultationActive(true);
-    setDebutConsultation(Date.now());
-    setDureeConsultationReelle(0);
+    if (!patientActuel) return;
+
+    // Mettre à jour le ticket dans le contexte avec le statut "serving"
+    setTickets((prev) =>
+      prev.map((t) =>
+        t.id === patientActuel.id ? { ...t, status: "serving" as const } : t,
+      ),
+    );
+    // Le useEffect détectera le changement et activera le timer
   };
 
-  const rappeler = () => {
+  // --- Rappeler (async) ---
+  const rappeler = async () => {
     if (!patientActuel) return;
+    await recallPatient(patientActuel.id); // ✅ await
     setAnnonceKey(annonceKey + 1);
     annoncerPatient(patientActuel);
   };
 
-  const marquerAbsent = () => {
+  // --- Marquer absent (async) ---
+  const marquerAbsent = async () => {
     if (!patientActuel) return;
     if (confirm(`Absent·e : ${patientActuel.userName} ?`)) {
+      await markAbsent(patientActuel.id); // ✅ await
       setPatientActuel(null);
       setConsultationActive(false);
       setDebutConsultation(null);
+      setDureeConsultationReelle(0);
     }
   };
 
-  const terminerConsultation = () => {
+  // --- Terminer la consultation (async) ---
+  const terminerConsultation = async () => {
     if (!patientActuel || !consultationActive) return;
+    await completeService(patientActuel.id); // ✅ await
+    setNbTraites(nbTraites + 1);
     setPatientActuel(null);
     setConsultationActive(false);
     setDebutConsultation(null);
-    setNbTraites(nbTraites + 1);
+    setDureeConsultationReelle(0);
   };
 
+  // --- Fin de file ---
   const reporterFinFile = () => {
     if (!patientActuel) return;
-    const repousse = {
+
+    const autresTickets = tickets.filter(
+      (t) =>
+        t.service.id === patientActuel.service.id &&
+        t.status === "waiting" &&
+        t.id !== patientActuel.id,
+    );
+
+    const nouvellePosition = autresTickets.length + 1;
+
+    const ticketRepousse: Ticket = {
       ...patientActuel,
-      arrivee: Date.now(),
-      prioritaire: false,
+      status: "waiting",
+      position: nouvellePosition,
+      counterId: undefined,
+      counterName: undefined,
+      calledAt: undefined,
+      completedAt: undefined,
     };
-    setFileAttente([...fileAttente, repousse as Ticket]);
+
+    setTickets((prev) =>
+      prev.map((t) => (t.id === patientActuel.id ? ticketRepousse : t)),
+    );
+
     setPatientActuel(null);
     setConsultationActive(false);
     setDebutConsultation(null);
+    setDureeConsultationReelle(0);
   };
 
+  // --- Priorité ---
   const ouvrirModalPriorite = () => {
     if (fileAttente.length === 0) return;
     setModalPriorite(true);
@@ -179,24 +230,35 @@ const annoncerPatient = (ticket: Ticket) => {
   const validerPriorite = () => {
     if (!numeroPriorite.trim()) return alert("Entrez un numéro");
     const recherche = numeroPriorite.trim().toUpperCase();
-    const index = fileAttente.findIndex((t) => t.numero === recherche);
+    const index = fileAttente.findIndex((t) => t.number === recherche);
     if (index === -1) return alert("Ticket introuvable");
-    const prioritaire = { ...fileAttente[index], prioritaire: true };
-    const nouvelleFile = [
-      prioritaire,
-      ...fileAttente.slice(0, index),
-      ...fileAttente.slice(index + 1),
-    ];
-    setFileAttente(nouvelleFile);
+    alert("Fonction priorité non implémentée dans le contexte.");
     setNumeroPriorite("");
     setModalPriorite(false);
   };
 
-  const formaterDuree = (sec : number ) => {
+  const formaterDuree = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
+
+  // --- Rendu ---
+  if (!agent || !counter) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-slate-700">
+            Aucun guichet assigné
+          </h2>
+          <p className="text-slate-500 mt-2">
+            Veuillez contacter l'administrateur.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-100/30 pb-12">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-6">
@@ -208,7 +270,7 @@ const annoncerPatient = (ticket: Ticket) => {
                 Console d'appel
               </h1>
               <p className="text-sm text-slate-500">
-                Guichet A1 — Consultation générale
+                Guichet {counter.name} — {counter.serviceName}
               </p>
             </div>
           </div>
@@ -219,12 +281,12 @@ const annoncerPatient = (ticket: Ticket) => {
             </div>
             <div
               className={`px-4 py-1.5 rounded-full text-sm font-semibold shadow-sm ${
-                guichetOuvert
+                counter.isActive
                   ? "bg-emerald-500 text-white"
                   : "bg-rose-500 text-white"
               }`}
             >
-              {guichetOuvert ? "Ouvert" : "Fermé"}
+              {counter.isActive ? "Ouvert" : "Fermé"}
             </div>
             <button
               onClick={() => setSonActif(!sonActif)}
@@ -235,6 +297,7 @@ const annoncerPatient = (ticket: Ticket) => {
           </div>
         </div>
 
+        {/* Carte patient actuel */}
         <div className="mb-8">
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 px-6 py-8">
@@ -264,7 +327,7 @@ const annoncerPatient = (ticket: Ticket) => {
                             <Timer size={14} /> consultation
                           </div>
                           <span className="text-white text-xl font-mono">
-{formaterDuree(dureeConsultationReelle ?? 0)}
+                            {formaterDuree(dureeConsultationReelle ?? 0)}
                           </span>
                         </div>
                       </div>
@@ -273,7 +336,7 @@ const annoncerPatient = (ticket: Ticket) => {
                 ) : (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                     <p className="text-white/80 text-2xl font-medium">
-                       Aucun patient
+                      Aucun patient
                     </p>
                     <p className="text-emerald-100 text-sm mt-1">
                       Appuyez sur « Suivant »
@@ -283,17 +346,27 @@ const annoncerPatient = (ticket: Ticket) => {
               </AnimatePresence>
             </div>
 
+            {/* Boutons d'action */}
             <div className="p-5 bg-white">
-              <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-8 gap-3">
                 <button
                   onClick={appelerSuivant}
-                  disabled={!guichetOuvert || fileAttente.length === 0}
+                  disabled={!counter.isActive || fileAttente.length === 0}
                   className="flex flex-col items-center gap-2 py-4 rounded-xl bg-emerald-500 text-white shadow-md hover:bg-emerald-700 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
                 >
                   <Phone size={22} />
                   <span className="text-xs">Suivant</span>
                 </button>
-                
+
+                <button
+                  onClick={demarrerConsultation}
+                  disabled={!patientActuel || consultationActive}
+                  className="flex flex-col items-center gap-2 py-4 rounded-xl bg-blue-500 text-white shadow-md hover:bg-blue-600 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
+                >
+                  <Play size={20} />
+                  <span className="text-xs">Démarrer</span>
+                </button>
+
                 <button
                   onClick={rappeler}
                   disabled={!patientActuel}
@@ -336,6 +409,7 @@ const annoncerPatient = (ticket: Ticket) => {
                 </button>
               </div>
 
+              {/* Annonce vocale (animation) */}
               <AnimatePresence>
                 {patientActuel && (
                   <motion.div
@@ -354,7 +428,10 @@ const annoncerPatient = (ticket: Ticket) => {
                           ANNONCE VOCALE
                         </span>
                         Ticket <strong>{patientActuel.number}</strong>, veuillez
-                        vous présenter au guichet A1
+                        vous présenter au guichet{" "}
+                        <strong>
+                          {patientActuel.counterName || counter.name}
+                        </strong>
                       </p>
                       <div className="w-full bg-emerald-200 rounded-full h-1 mt-2 overflow-hidden">
                         <motion.div
@@ -372,6 +449,7 @@ const annoncerPatient = (ticket: Ticket) => {
           </div>
         </div>
 
+        {/* File d'attente */}
         <div className="mb-7">
           <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg overflow-hidden">
             <div className="px-6 py-4 border-b flex justify-between items-center">
@@ -399,9 +477,7 @@ const annoncerPatient = (ticket: Ticket) => {
                       key={patient.id}
                       className={`flex justify-between items-center p-3 rounded-xl ${
                         idx === 0
-                          ? patient.prioritaire
-                            ? "bg-purple-50 border-l-4 border-purple-500"
-                            : "bg-emerald-50 border-l-4 border-emerald-500"
+                          ? "bg-emerald-50 border-l-4 border-emerald-500"
                           : "bg-white hover:bg-slate-50"
                       }`}
                     >
@@ -409,9 +485,7 @@ const annoncerPatient = (ticket: Ticket) => {
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${
                             idx === 0
-                              ? patient.prioritaire
-                                ? "bg-purple-500 text-white"
-                                : "bg-emerald-500 text-white"
+                              ? "bg-emerald-500 text-white"
                               : "bg-slate-100"
                           }`}
                         >
@@ -420,21 +494,16 @@ const annoncerPatient = (ticket: Ticket) => {
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-slate-800">
-                              {patient.numero}
+                              {patient.number}
                             </span>
                             <span className="text-slate-500 text-sm">
-                              {patient.nom}
+                              {patient.userName}
                             </span>
-                            {patient.prioritaire && (
-                              <span className="text-purple-600 text-xs bg-purple-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                <Star size={10} /> Prioritaire
-                              </span>
-                            )}
                           </div>
                           <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
                             <Clock size={12} />
                             <span>
-                              attente estimée : {patient.tempsAttenteEstime} min
+                              attente estimée : {patient.waitTime ?? "?"} min
                             </span>
                           </div>
                         </div>
@@ -448,15 +517,16 @@ const annoncerPatient = (ticket: Ticket) => {
           </div>
         </div>
 
+        {/* Bouton ouvrir/fermer le guichet (async) */}
         <button
-          onClick={() => setGuichetOuvert(!guichetOuvert)}
+          onClick={async () => await toggleCounter(!counter.isActive)}
           className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-3 transition-all ${
-            guichetOuvert
+            counter.isActive
               ? "bg-white border-2 border-rose-200 text-rose-600 hover:bg-rose-50"
               : "bg-emerald-600 text-white hover:bg-emerald-700"
           }`}
         >
-          {guichetOuvert ? (
+          {counter.isActive ? (
             <>
               <PhoneOff size={20} /> Fermer le guichet
             </>
@@ -468,6 +538,7 @@ const annoncerPatient = (ticket: Ticket) => {
         </button>
       </div>
 
+      {/* Modal priorité */}
       {modalPriorite && (
         <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
