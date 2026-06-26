@@ -32,7 +32,8 @@ import {
   Menu,
   X,
   UserPlus,
-  RefreshCw
+  RefreshCw,
+  Activity,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -205,53 +206,62 @@ const { services, takeTicket, currentTicket } = useApp()
       {/* NAVBAR */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-6">
-          <div
-            className="flex items-center gap-3 cursor-pointer select-none"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          >
-            <div className="flex flex-col items-start">
-              <img src="/placeholder-logo.svg" alt="Rang+" className="h-8 w-auto" />
-              <span className="text-[11px] font-semibold text-[#1e293b]/70 italic tracking-tight mt-0.5">
-                Hôpital du Mali
-              </span>
-            </div>
-          </div>
+        <div
+  className="flex items-center cursor-pointer select-none"
+  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+>
+  <div className="flex flex-col items-start">
+    <span className="text-xl font-extrabold tracking-tight text-slate-800">
+      Rang<span className="text-emerald-600">+</span>
+    </span>
+    <span className="text-[11px] font-medium text-slate-500/80 tracking-[0.05em] -mt-0.5">
+      Hôpital du Mali
+    </span>
+  </div>
+</div>
+          <nav className="hidden md:flex items-center gap-1">
+  <button
+    onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })}
+    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-emerald-600 transition-all rounded-lg hover:bg-emerald-50/80 relative group"
+  >
+    Services
+    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-emerald-500 transition-all group-hover:w-1/2"></span>
+  </button>
 
-          <nav className="hidden md:flex items-center gap-8">
-            <button
-              onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Services
-            </button>
+  {generatedTicket ? (
+    <button
+      onClick={() => setShowTrackingModal(true)}
+      className="px-4 py-2 text-sm font-semibold text-emerald-600 flex items-center gap-1.5 bg-emerald-50/80 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-200/50"
+    >
+      <RefreshCw className="size-3.5 animate-spin text-emerald-500" />
+      Ticket #{generatedTicket.number}
+    </button>
+  ) : (
+    <button
+      onClick={onTakeTicket}
+      className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-emerald-600 transition-all rounded-lg hover:bg-emerald-50/80 relative group"
+    >
+      Prendre un ticket
+      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-emerald-500 transition-all group-hover:w-1/2"></span>
+    </button>
+  )}
 
-            {generatedTicket ? (
-              <button
-                onClick={() => setShowTrackingModal(true)}
-                className="text-sm font-semibold text-primary animate-pulse flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors"
-              >
-                <RefreshCw className="size-3.5 animate-spin text-primary" />
-                Suivre mon ticket ({generatedTicket.number})
-              </button>
-            ) : (
-              <button
-                onClick={onTakeTicket}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Prendre un ticket
-              </button>
-            )}
-
-            <button onClick={onScanQR} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Scanner QR
-            </button>
-            <button
-              onClick={() => document.getElementById("contact-section")?.scrollIntoView({ behavior: "smooth" })}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Contact
-            </button>
-          </nav>
+  <button 
+    onClick={onScanQR} 
+    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-emerald-600 transition-all rounded-lg hover:bg-emerald-50/80 relative group"
+  >
+    Scanner QR
+    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-emerald-500 transition-all group-hover:w-1/2"></span>
+  </button>
+  
+  <button
+    onClick={() => document.getElementById("contact-section")?.scrollIntoView({ behavior: "smooth" })}
+    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-emerald-600 transition-all rounded-lg hover:bg-emerald-50/80 relative group"
+  >
+    Contact
+    <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-emerald-500 transition-all group-hover:w-1/2"></span>
+  </button>
+</nav>
 
           <div className="hidden md:flex items-center gap-3">
             <Button variant="ghost" onClick={onLogin} className="gap-2 text-sm font-medium">
