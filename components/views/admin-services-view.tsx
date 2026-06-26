@@ -60,6 +60,7 @@ interface ServiceFormData {
   isActive: boolean
   openTime: string
   closeTime: string
+  
 }
 export  function AdminServicesView() {
   const { services, counters, tickets, createService, updateService, deleteService , fetchServices } = useApp()
