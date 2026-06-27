@@ -103,7 +103,11 @@ interface AppContextType {
   logout: () => void
   
   // Patient actions
-  takeTicket: (service: Service, name: string, firstName: string) => Ticket
+  takeTicket: (
+    service: Service,
+    name: string,
+    firstName: string
+  ) => Promise<Ticket>
   cancelTicket: (ticketId: string) => void
   getPatientHistory: () => Ticket[]
   getActiveTickets: () => Ticket[]
@@ -322,48 +326,60 @@ const [agents, setAgents] = useState<Agent[]>([]); // Était defaultAgents
   }, [user])
 
   // Patient functions
-  const takeTicket = useCallback((service: Service, name: string, firstName: string): Ticket => {
-    const serviceTickets = tickets.filter(t => t.service.id === service.id && t.status === "waiting")
-    const position = serviceTickets.length + 1
-    const ticketPrefix = service.name.charAt(0).toUpperCase()
-    const ticketNumber = `${ticketPrefix}${String(position).padStart(3, "0")}`
-    
-    // Find available counter for this service
-    const availableCounter = counters.find(c => c.serviceId === service.id && c.isActive && c.agentId)
-    
-    const newTicket: Ticket = {
-      id: `ticket-${Date.now()}`,
-      number: ticketNumber,
-      service,
-      counterId: availableCounter?.id,
-      counterName: availableCounter?.name,
-      userId: user?.id || `visitor-${Date.now()}`,
-      userName: `${firstName} ${name}`,
-      status: "waiting",
-      position,
-      totalInQueue: position,
-      createdAt: new Date(),
-    }
-    
-    setTickets(prev => [...prev, newTicket])
-    setCurrentTicket(newTicket)
-    
-    setServices(prev => prev.map(s => 
-      s.id === service.id ? { ...s, currentQueue: s.currentQueue + 1 } : s
-    ))
-    
-    if (!user) {
-      setUser({
-        id: newTicket.userId,
-        name,
-        firstName,
-        role: "patient",
-      })
-    }
-    
-    return newTicket
-  }, [tickets, counters, user])
+  const takeTicket = async (
+    service: Service,
+    nom: string,
+    prenom: string
+  ) => {
 
+  // Vérifier si le patient a déjà un ticket actif dans ce service
+  const { data: existingTicket } = await supabase
+    .from("ticket")
+    .select("*")
+    .eq("id_service", service.id)
+    .eq("patient_nom", `${prenom} ${nom}`)
+    .in("statut", ["En attente", "Appelé", "En cours"])
+    .maybeSingle();
+
+  if (existingTicket) {
+    throw new Error(
+      `Vous avez déjà un ticket actif dans le service ${service.name}`
+    );
+  }
+
+  const numero = `${service.name.substring(0, 3).toUpperCase()}-${Date.now()}`;
+
+  const { data, error } = await supabase
+    .from("ticket")
+    .insert([
+      {
+        code: numero,
+        patient_nom: `${prenom} ${nom}`,
+        statut: "En attente",
+        id_service: service.id,
+        position: service.currentQueue + 1,
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Erreur Supabase :", error);
+    throw error;
+  }
+
+  return {
+    id: data.id,
+    number: data.code,
+    service,
+    userId: user?.id || "",
+    userName: `${prenom} ${nom}`,
+    status: "waiting",
+    position: data.position,
+    totalInQueue: data.position,
+    createdAt: new Date(),
+  } as Ticket;
+};
   const cancelTicket = useCallback((ticketId: string) => {
     setTickets(prev => prev.map(t => 
       t.id === ticketId ? { ...t, status: "cancelled" as const } : t

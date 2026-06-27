@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   Ticket, 
@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useApp, Ticket as TicketType } from "@/lib/app-context"
+import { supabase } from "@/lib/supabase"
 
 interface PatientDashboardProps {
   onNavigate: (tab: string) => void
@@ -28,13 +29,107 @@ interface PatientDashboardProps {
 }
 
 export  default function PatientDashboard({ onNavigate, onTakeTicket }: PatientDashboardProps) {
-  const { user, getActiveTickets, getPatientHistory, cancelTicket } = useApp()
-  
-  const activeTickets = getActiveTickets()
-  const history = getPatientHistory()
-  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(
-    activeTickets.length > 0 ? activeTickets[0] : null
-  )
+
+const { user, cancelTicket } = useApp()
+
+const [activeTickets, setActiveTickets] = useState<TicketType[]>([])
+const [history, setHistory] = useState<TicketType[]>([])
+const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null)
+
+useEffect(() => {
+  if (!user) return
+
+  const loadTickets = async () => {
+    const { data, error } = await supabase
+      .from("ticket")
+      .select(`
+        *,
+        service(*)
+      `)
+      .eq("patient_nom", `${user.firstName} ${user.name}`)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error(error)
+      return
+    }
+
+    const tickets: TicketType[] = data.map((t: any) => ({
+      id: t.id,
+      number: t.code,
+      service: {
+        id: t.service.id,
+        name: t.service.nom,
+        description: t.service.description,
+        icon: t.service.icon,
+        waitTime: t.service.wait_time,
+        currentQueue: t.service.current_queue,
+        isActive: t.service.is_active,
+        openTime: t.service.open_time,
+        closeTime: t.service.close_time,
+      },
+      userId: user.id,
+      userName: t.patient_nom,
+      status:
+        t.statut === "En attente"
+          ? "waiting"
+          : t.statut === "Appelé"
+          ? "called"
+          : t.statut === "En cours"
+          ? "serving"
+          : t.statut === "Terminé"
+          ? "completed"
+          : t.statut === "Absent"
+          ? "absent"
+          : "cancelled",
+      position: t.position,
+      totalInQueue: t.position,
+      createdAt: new Date(t.created_at),
+      calledAt: t.called_at ? new Date(t.called_at) : undefined,
+      completedAt: t.completed_at ? new Date(t.completed_at) : undefined,
+      counterId: t.id_guichet,
+      counterName: t.nom_guichet,
+    }))
+
+    setHistory(tickets)
+
+    const actifs = tickets.filter(
+      t =>
+        t.status === "waiting" ||
+        t.status === "called" ||
+        t.status === "serving"
+    )
+
+    setActiveTickets(actifs)
+
+    if (actifs.length > 0) {
+      setSelectedTicket(actifs[0])
+    } else {
+      setSelectedTicket(null)
+    }
+  }
+
+  loadTickets()
+
+  const channel = supabase
+    .channel("patient-tickets")
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "ticket",
+      },
+      () => {
+        loadTickets()
+      }
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
+  }
+}, [user])
 
   const completedTickets = history.filter(t => t.status === "completed")
   const cancelledTickets = history.filter(t => t.status === "cancelled" || t.status === "absent")

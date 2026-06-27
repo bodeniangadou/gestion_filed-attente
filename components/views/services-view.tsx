@@ -49,7 +49,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   )
 
   // ACTION CENTRALISÉE DE PRISE DE TICKET
-  const handleTakeTicket = (service: Service) => {
+  const handleTakeTicket = async (service: Service) => {
     // Double sécurité : On bloque l'action si le service est inactif
     if (!service.isActive) {
       alert(`Le service ${service.name} est actuellement fermé ou indisponible.`)
@@ -58,11 +58,24 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
     setSelectedService(service)
     if (user && user.role === "patient") {
-      const ticket = takeTicket(service, user.name, user.firstName)
-      setNewTicket({ number: ticket.number, service: service.name })
-      setShowSuccessModal(true)
-    } else {
-      setShowTicketModal(true)
+      try {
+        const ticket = await takeTicket(
+          service,
+          user.name,
+          user.firstName
+        )
+
+        setNewTicket({
+          number: ticket.number,
+          service: service.name,
+        })
+
+        setShowSuccessModal(true)
+
+      } catch (error: any) {
+        alert(error.message)
+        return
+      }
     }
   }
 
@@ -147,14 +160,29 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     }
   }, [showScannerModal, services])
 
-  const handleSubmitForm = () => {
-    if (!selectedService || !formData.nom || !formData.prenom) return
-    const ticket = takeTicket(selectedService, formData.nom, formData.prenom)
-    setNewTicket({ number: ticket.number, service: selectedService.name })
-    setShowTicketModal(false)
-    setShowSuccessModal(true)
-    setFormData({ nom: "", prenom: "" })
+  const handleSubmitForm = async () => {
+  if (!selectedService || !formData.nom || !formData.prenom) return;
+
+  try {
+    const ticket = await takeTicket(
+      selectedService,
+      formData.nom,
+      formData.prenom
+    );
+
+    setNewTicket({
+      number: ticket.number,
+      service: selectedService.name,
+    });
+
+    setShowTicketModal(false);
+    setShowSuccessModal(true);
+    setFormData({ nom: "", prenom: "" });
+
+  } catch (error: any) {
+    alert(error.message);
   }
+};
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
