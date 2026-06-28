@@ -32,10 +32,10 @@ interface NavItem {
 const navItems = [
   // --- Admin ---
   { icon: <LayoutDashboard />, label: "Dashboard", href: "/admin", roles: ["admin"] },
+  { icon: <Ticket />, label: "Tickets", href: "/admin/ticket", roles: ["admin"] },
   { icon: <Users />, label: "Agents", href: "/admin/agents", roles: ["admin"] },
   { icon: <Stethoscope />, label: "Services", href: "/admin/services", roles: ["admin"] },
   { icon: <Monitor />, label: "Guichets", href: "/admin/counters", roles: ["admin"] },
-  { icon: <Settings />, label: "Paramètres", href: "/admin/settings", roles: ["admin"] },
   { icon: <User />, label: "Profil", href: "/admin/profile", roles: ["admin"] },
 
   // --- Agent ---
@@ -111,7 +111,7 @@ export function AppSidebar() {
 
       {/* User section */}
       <div className="p-4">
-        {user ? (
+        {user && (
           <div className="space-y-3">
             <div className="flex items-center gap-3 rounded-lg bg-accent/50 p-3">
               <Avatar className="size-10">
@@ -136,11 +136,7 @@ export function AppSidebar() {
               Se déconnecter
             </Button>
           </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border p-4 text-center">
-            <p className="text-sm text-muted-foreground">Mode visiteur</p>
-          </div>
-        )}
+        ) }
       </div>
     </motion.aside>
   )

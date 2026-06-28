@@ -1,21 +1,22 @@
 import React from 'react'
-import { 
-  X, CheckCircle2, MessageSquare, QrCode, 
-  MapPin, Clock, AlertCircle, Trash2, Activity 
+import {
+  X, CheckCircle2, MessageSquare, QrCode,
+  MapPin, Clock, AlertCircle, Trash2, Activity
 } from 'lucide-react'
 
 interface TicketTrackingModalProps {
   isOpen: boolean
   onClose: () => void
-  ticket: { 
-    number: string; 
-    service: string; 
-    waitTime: number; 
-    queuePos: number;
-    guichet?: string;     
-    phoneNumber?: string; 
+  ticket: {
+    number: string
+    service: string
+    waitTime: number
+    queuePos: number
+    statut?: string
+    counterName?: string
+    phoneNumber?: string
   } | null
-  onCancelTicket: () => void 
+  onCancelTicket: () => void
 }
 
 export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
@@ -26,17 +27,20 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 }) => {
   if (!isOpen || !ticket) return null
 
-  const guichet = ticket.guichet || "Guichet 3"
+  const isCalled = ticket.statut === "called" || ticket.statut === "serving"
+  const guichet = ticket.counterName || "Guichet à confirmer"
   const displayPhone = ticket.phoneNumber || "+223 XX XX XX XX"
-  
-  const progress = Math.max(15, Math.min(90, 100 - (ticket.queuePos * 10)))
+
+  // Progression réelle basée sur le rang dans la file (plus c'est petit, plus c'est proche)
+  // et 100% dès que le ticket est appelé/en cours, en cohérence avec le reste de l'app
+  const progress = isCalled ? 100 : Math.max(15, Math.min(95, 100 - (ticket.queuePos * 10)))
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      
+
       {/* CARD PRINCIPALE */}
       <div className="relative w-full max-w-4xl bg-slate-50 dark:bg-slate-900 rounded-[24px] shadow-2xl border border-border overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
-        
+
         {/* EN-TÊTE MODAL */}
         <div className="flex items-center justify-between px-6 py-5 bg-card border-b border-border/60">
           <div className="flex items-center gap-3">
@@ -52,10 +56,10 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 
         {/* CONTENU EN DEUX COLONNES */}
         <div className="p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 max-h-[calc(100vh-140px)] overflow-y-auto">
-          
+
           {/* COLONNE GAUCHE (7/12) : SERVICE, NUMÉRO & PROGRESSION */}
           <div className="md:col-span-7 space-y-6">
-            
+
             {/* EN-TÊTE DU PASSAGE (Service & Guichet) */}
             <div className="bg-emerald-500 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
               <div className="space-y-1">
@@ -81,7 +85,7 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
               </h1>
               <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-1.5 rounded-full text-xs font-bold">
                 <CheckCircle2 className="size-4" />
-                Ticket Actif & Validé
+                {isCalled ? "C'est votre tour !" : "Ticket Actif & Validé"}
               </div>
 
               {/* JAUGE DE PROGRESSION */}
@@ -99,7 +103,7 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 
           {/* COLONNE DROITE (5/12) : RANG, SMS & ANNULATION */}
           <div className="md:col-span-5 flex flex-col justify-between space-y-4">
-            
+
             {/* COMPTEUR DE RANG */}
             <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
               <div className="flex items-center gap-4">
@@ -109,7 +113,9 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
                 </div>
                 <div className="space-y-1">
                   <p className="font-bold text-base text-foreground">
-                    {ticket.queuePos} {ticket.queuePos > 1 ? 'personnes attendent' : 'personne attend'} avant vous
+                    {isCalled
+                      ? "Présentez-vous au guichet"
+                      : `${ticket.queuePos} ${ticket.queuePos-1 > 1 ? 'personnes attendent' : 'personne attend'} avant vous`}
                   </p>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Clock className="size-4 text-amber-500 shrink-0" />
@@ -146,9 +152,8 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
             <div className="pt-2">
               <button
                 onClick={() => {
-                  if(confirm("Voulez-vous vraiment annuler votre ticket ? Cette action est définitive.")) {
-                    onCancelTicket()
-                  }
+                
+                  onCancelTicket()
                 }}
                 className="w-full py-3.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/30 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
               >

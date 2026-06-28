@@ -60,6 +60,7 @@ interface ServiceFormData {
   isActive: boolean
   openTime: string
   closeTime: string
+  
 }
 export  function AdminServicesView() {
   const { services, counters, tickets, createService, updateService, deleteService , fetchServices } = useApp()
@@ -79,10 +80,24 @@ const [formData, setFormData] = useState<ServiceFormData>({
   closeTime: "17:00"
 })
 
-  const filteredServices = services.filter(s => 
-    s.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+ const filteredServices = services
+  .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+  .sort((a, b) => a.name.localeCompare(b.name)); // Trie par nom (A-Z)
 
+  const toggleServiceStatus = async (service: Service) => {
+  const previousStatus = service.isActive;
+  const newStatus = !previousStatus;
+
+  
+  await supabase
+    .from("service")
+    .update({ is_active: newStatus })
+    .eq("id", service.id);
+
+  
+  fetchServices();
+  toast.success("Succès", { description: "Statut mis à jour." });
+};
  const handleCreate = async () => {
   const MON_ID_HOPITAL = "1789ea4c-f298-4109-803a-b036cda79ed0";
 
@@ -112,14 +127,32 @@ const [formData, setFormData] = useState<ServiceFormData>({
   resetForm();
   await fetchServices();
 }
+const handleUpdate = async () => {
+  if (!editingService) return;
 
-  const handleUpdate = () => {
-    if (editingService) {
-      updateService(editingService.id, formData)
-      setEditingService(null)
-      resetForm()
-    }
+  setEditingService(null);
+  
+  const { error } = await supabase
+    .from("service") 
+.update({
+  nom: formData.name,
+  description: formData.description,
+  icon: formData.icon,
+  open_time: formData.openTime.length > 5 ? formData.openTime : `${formData.openTime}:00`,
+  close_time: formData.closeTime.length > 5 ? formData.closeTime : `${formData.closeTime}:00`,
+})
+    .eq("id", editingService.id); 
+
+  if (error) {
+    toast.error("Erreur de sauvegarde", { description: error.message });
+    return;
   }
+
+  toast.success("Service mis à jour");
+  
+  await fetchServices();
+  resetForm();
+};
 
   const handleDelete = (id: string) => {
     if (confirm("Êtes-vous sûr de vouloir supprimer ce service ?")) {
@@ -180,8 +213,8 @@ const openEditModal = (service: Service) => {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredServices.map((service, index) => {
             const Icon = getIconComponent(service.icon)
-            const queueCount = tickets.filter(t => t.service.id === service.id && t.status === "waiting").length
-  const hasTickets = tickets.some(t => t.service.id === service.id);
+            const queueCount = tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length
+  const hasTickets = tickets.some(t => t.service?.id === service.id);
 const hasCounters = counters.some(c => c.serviceId === service.id);
   const canDelete = !hasTickets && !hasCounters;
             return (
@@ -206,12 +239,13 @@ const hasCounters = counters.some(c => c.serviceId === service.id);
                       </div>
                       <Switch 
                         checked={service.isActive}
-                        onCheckedChange={(checked) => updateService(service.id, { isActive: checked })}
+                        onCheckedChange={() => toggleServiceStatus(service)} // Appel de la nouvelle fonction
                         className="scale-75 origin-top-right"
                       />
+                      
                     </div>
 
-                    {/* Partie Milieu: Badge File d'attente mini */}
+                    {}
                     <div className="mt-2.5 flex items-center justify-between px-2 py-1 rounded-md bg-muted/50 border border-border/20">
                       <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                         <Users className="size-3" />

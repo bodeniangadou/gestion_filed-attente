@@ -1,7 +1,7 @@
 "use client"
 
 import { useState , useEffect } from "react"
-import { supabase } from "@/lib/supabase"; // Assure-toi d'importer ton client supabase
+import { supabase } from "@/lib/supabase"; 
 import { toast } from "sonner";
 import { motion } from "framer-motion"
 import { Plus, Monitor, User, Power, MoreVertical, Edit2, Trash2 } from "lucide-react"
@@ -21,39 +21,45 @@ const { counters, services, setCounters , agents, fetchServices, fetchCounters }
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCounter, setNewCounter] = useState({ name: "", serviceId: "", agentId: "" })
 const [showEditModal, setShowEditModal] = useState(false);
-const [editingCounter, setEditingCounter] = useState<{ id: string; name: string } | null>(null);
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
+
+const [editingCounter, setEditingCounter] = useState<any>(null);
+const [agentSearch, setAgentSearch] = useState("");
 const handleUpdate = async () => {
   if (!editingCounter?.name) return;
+  if (isNameTaken(editingCounter.name, editingCounter.id)) {
+    toast.error("Un autre guichet porte déjà ce nom.");
+    return;
+  }
 
   const { error } = await supabase
     .from("guichet")
-    .update({ numero: editingCounter.name })
+    .update({ 
+      numero: editingCounter.name,
+      id_service: editingCounter.serviceId,
+      id_agent_actuel: editingCounter.id_agent_actuel 
+    })
     .eq("id", editingCounter.id);
 
   if (error) {
-    toast.error("Erreur lors de la modification");
+    toast.error("Erreur lors de la mise à jour");
   } else {
-    toast.success("Nom du guichet mis à jour !");
-    // Mise à jour de l'affichage localement
-    setCounters(counters.map(c => 
-      c.id === editingCounter.id ? { ...c, name: editingCounter.name } : c
-    ));
+    toast.success("Guichet mis à jour !");
+    fetchCounters(); 
     setShowEditModal(false);
   }
 };
  const toggleCounter = async (id: string, currentStatus: boolean) => {
-    // 1. Calcul du nouveau statut
+
     const newStatus = !currentStatus;
     const newStatusText = newStatus ? 'Actif' : 'Inactif';
 
-    // 2. Mise à jour optimiste (on change l'UI tout de suite pour la fluidité)
     setCounters(
       counters.map(c => 
         c.id === id ? { ...c, isActive: newStatus } : c
       )
     );
 
-    // 3. Appel Supabase pour persister le changement
     const { error } = await supabase
       .from("guichet")
       .update({ statut: newStatusText })
@@ -63,7 +69,6 @@ const handleUpdate = async () => {
       console.error("Erreur mise à jour:", error);
       toast.error("Échec de la mise à jour du statut.");
       
-      // En cas d'erreur, on annule le changement local
       setCounters(
         counters.map(c => 
           c.id === id ? { ...c, isActive: currentStatus } : c
@@ -71,6 +76,7 @@ const handleUpdate = async () => {
       );
     } else {
       toast.success(`Guichet ${newStatusText.toLowerCase()} avec succès.`);
+      await fetchCounters();
     }
   };
 useEffect(() => {
@@ -78,12 +84,15 @@ useEffect(() => {
     fetchCounters();
   }, [fetchServices, fetchCounters]);
  const handleCreate = async () => {
+  if (isNameTaken(newCounter.name)) {
+    toast.error("Ce nom de guichet existe déjà !");
+    return;
+  }
   if (!newCounter.name || !newCounter.serviceId) {
     toast.error("Veuillez remplir le nom et le service.");
     return;
   }
 
-  // Préparation de l'objet selon ta table
   const counterData = {
     numero: newCounter.name,
     id_service: newCounter.serviceId,
@@ -101,10 +110,12 @@ useEffect(() => {
     toast.error("Erreur lors de la création du guichet.");
   } else {
     toast.success("Guichet créé avec succès !");
-    setCounters([...counters, { ...data[0], name: data[0].numero, isActive: true }]);
+    // Resynchronisation réelle depuis Supabase au lieu d'un objet local construit à la main
+    // (évite l'incohérence : le guichet est créé "Inactif" en BDD mais affichait "Actif" localement)
+    await fetchCounters();
     setShowCreateModal(false);
     setNewCounter({ name: "", serviceId: "", agentId: "" });
-    setNewCounter({ name: "", serviceId: "", agentId: "" });
+    setAgentSearch("");
   }
 };
 
@@ -112,19 +123,24 @@ useEffect(() => {
     return services.find(s => s.id === serviceId)?.name || "Non assigné"
   }
 
-  const getAgentName = (agentId?: string) => {
-    if (!agentId) return "Non assigné"
-    const agent = agents.find(a => a.id === agentId)
-    return agent ? `${agent.firstName} ${agent.name}` : "Non assigné"
-  }
-  // Liste des agents du service choisi qui n'ont pas encore de guichet
-const availableAgents = agents.filter(agent => {
-  // On vérifie si l'agent est déjà dans la liste des guichets actifs
-  const isAlreadyAssigned = counters.some(c => c.agentId === agent.id);
+  const getAgentName = (agentId?: string | null) => {
+  if (!agentId) return "Non assigné";
+
+  const agent = agents.find(a => a.id === agentId);
+
+  return agent ? `${agent.firstName} ${agent.name}` : "Agent introuvable";
+};
+// const availableAgents = agents.filter(agent => {
+//   const isAlreadyAssigned = counters.some(c => c.id_agent_actuel === agent.id);
   
-  // L'agent est disponible s'il n'est assigné nulle part
-  return !isAlreadyAssigned;
-});
+//   return !isAlreadyAssigned;
+// })
+const isNameTaken = (name: string, excludeId?: string) => {
+  return counters.some(c => 
+    c.name.toLowerCase().trim() === name.toLowerCase().trim() && 
+    c.id !== excludeId
+  );
+};
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -204,8 +220,8 @@ const availableAgents = agents.filter(agent => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                       <DropdownMenuItem onClick={() => {
-  setEditingCounter({ id: counter.id, name: counter.name });
+<DropdownMenuItem onClick={() => {
+  setEditingCounter(counter); 
   setShowEditModal(true);
 }}>
   <Edit2 className="mr-2 size-4" />
@@ -220,11 +236,12 @@ const availableAgents = agents.filter(agent => {
                   </div>
 
                   <div className="mt-4 flex items-center gap-2">
-                    <User className="size-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Agent: {getAgentName(counter.agentId)}
-                    </span>
-                  </div>
+  <User className="size-4 text-muted-foreground" />
+  <span className="text-sm text-muted-foreground">
+    {/* Utilise counter.id_agent_actuel au lieu de counter.agentId */}
+    Agent: {getAgentName(counter.id_agent_actuel)}
+  </span>
+</div>
 
                   <div className="mt-4 flex items-center justify-between">
                     <Badge variant={counter.isActive ? "default" : "secondary"} className={
@@ -251,18 +268,73 @@ const availableAgents = agents.filter(agent => {
     <DialogHeader>
       <DialogTitle>Modifier le guichet</DialogTitle>
     </DialogHeader>
-    <FieldGroup className="space-y-4">
+
+    <div className="space-y-4">
+      {/* Modification Nom */}
       <Field>
-        <FieldLabel>Nouveau nom</FieldLabel>
+        <FieldLabel>Nom du guichet</FieldLabel>
         <Input
           value={editingCounter?.name || ""}
-          onChange={(e) => setEditingCounter({ ...editingCounter!, name: e.target.value })}
+          onChange={(e) => setEditingCounter({ ...editingCounter, name: e.target.value })}
         />
       </Field>
-    </FieldGroup>
+
+      {/* Modification Service */}
+      <Field>
+        <FieldLabel>Service</FieldLabel>
+        <Select 
+          value={editingCounter?.serviceId || ""} 
+          onValueChange={(val) => setEditingCounter({ ...editingCounter, serviceId: val })}
+        >
+          <SelectTrigger>
+            <SelectValue>
+              {services.find(s => s.id === editingCounter?.serviceId)?.name || "Sélectionner un service"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {services.map(s => (
+              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      {/* Modification Agent */}
+      <Field>
+        <FieldLabel>Agent assigné</FieldLabel>
+        <Select 
+          value={editingCounter?.id_agent_actuel || "none"} 
+          onValueChange={(val) => setEditingCounter({ ...editingCounter, id_agent_actuel: val === "none" ? null : val })}
+        >
+          <SelectTrigger>
+            <SelectValue>
+              {editingCounter?.id_agent_actuel 
+                ? (agents.find(a => a.id === editingCounter.id_agent_actuel)?.firstName + " " + agents.find(a => a.id === editingCounter.id_agent_actuel)?.name)
+                : "Aucun agent"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Aucun agent</SelectItem>
+            {agents.map(a => {
+              const isOccupied = counters.some(c => c.id_agent_actuel === a.id && c.id !== editingCounter?.id);
+              return (
+                <SelectItem key={a.id} value={a.id} disabled={isOccupied}>
+                  {a.firstName} {a.name} {isOccupied ? "(Occupé)" : ""}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+
     <div className="mt-6 flex gap-3">
-      <Button variant="outline" className="flex-1" onClick={() => setShowEditModal(false)}>Annuler</Button>
-      <Button className="flex-1 bg-emerald" onClick={handleUpdate}>Enregistrer</Button>
+      <Button variant="outline" className="flex-1" onClick={() => setShowEditModal(false)}>
+        Annuler
+      </Button>
+      <Button className="flex-1 bg-emerald" onClick={handleUpdate}>
+        Enregistrer
+      </Button>
     </div>
   </DialogContent>
 </Dialog>
@@ -270,7 +342,6 @@ const availableAgents = agents.filter(agent => {
       <Dialog open={showCreateModal} onOpenChange={(open) => {
     setShowCreateModal(open);
     if (!open) {
-      // Vide les champs dès que le modal se ferme
       setNewCounter({ name: "", serviceId: "", agentId: "" });
     }}}>
         <DialogContent className="sm:max-w-md">
@@ -310,24 +381,46 @@ const availableAgents = agents.filter(agent => {
 
             <Field>
   <FieldLabel>Agent assigné (optionnel)</FieldLabel>
+  {/* Barre de recherche */}
+ <Input 
+    placeholder="Rechercher ou sélectionner un agent..." 
+    className="mb-2"
+    value={agentSearch}
+    onChange={(e) => {
+      setAgentSearch(e.target.value);
+      setIsSelectOpen(true); 
+    }}
+    onClick={() => setIsSelectOpen(true)}
+  />
   <Select 
-    disabled={!newCounter.serviceId} // Bloqué tant qu'un service n'est pas choisi
+    open={isSelectOpen}
+    onOpenChange={setIsSelectOpen}
+    disabled={!newCounter.serviceId}
     value={newCounter.agentId}
-    onValueChange={(value) => setNewCounter({ ...newCounter, agentId: value })}
+    onValueChange={(value) => {
+      setNewCounter({ ...newCounter, agentId: value });
+      setIsSelectOpen(false); 
+    }}
   >
     <SelectTrigger>
-      <SelectValue placeholder={!newCounter.serviceId ? "Sélectionnez d'abord un service" : "Choisir un agent disponible"} />
+      <SelectValue placeholder="Choisir un agent..." />
     </SelectTrigger>
     <SelectContent>
-      {availableAgents.length > 0 ? (
-        availableAgents.map((agent) => (
-          <SelectItem key={agent.id} value={agent.id}>
-            {agent.firstName} {agent.name}
-          </SelectItem>
-        ))
-      ) : (
-        <div className="p-2 text-sm text-muted-foreground">Aucun agent disponible pour ce service</div>
-      )}
+      {agents
+        .filter(a => `${a.firstName} ${a.name}`.toLowerCase().includes(agentSearch.toLowerCase()))
+        .map((agent) => {
+const occupiedBy = counters.find(c => String(c.id_agent_actuel) === String(agent.id));
+          const isOccupied = !!occupiedBy;
+          
+          return (
+            <SelectItem 
+              key={agent.id} 
+              value={agent.id} 
+              disabled={isOccupied}
+            >
+{agent.firstName} {agent.name} {isOccupied ? `(Occupé - Guichet ${occupiedBy?.name})` : "(Libre)"}            </SelectItem>
+          );
+        })}
     </SelectContent>
   </Select>
 </Field>

@@ -7,14 +7,29 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts"
-
-const data = [
-  { name: "En attente", value: 15, color: "#2563eb" },
-  { name: "Traités", value: 45, color: "#22c55e" },
-  { name: "Absents", value: 3, color: "#ef4444" },
-]
+import { useApp } from "@/lib/app-context"
 
 export function TicketsDistribution() {
+  const { tickets, getAgentCounter } = useApp()
+  const counter = getAgentCounter()
+
+  // Tickets du service de l'agent connecté
+  const serviceTickets = tickets.filter((t) =>
+    counter ? t.service?.id === counter.serviceId : false
+  )
+
+  const waiting = serviceTickets.filter(
+    (t) => t.statut === "waiting" || t.statut === "called" || t.statut === "serving"
+  ).length
+  const completed = serviceTickets.filter((t) => t.statut === "completed").length
+  const absent = serviceTickets.filter((t) => t.statut === "absent").length
+
+  const data = [
+    { name: "En attente", value: waiting, color: "#2563eb" },
+    { name: "Traités", value: completed, color: "#22c55e" },
+    { name: "Absents", value: absent, color: "#ef4444" },
+  ]
+
   const total = data.reduce((sum, item) => sum + item.value, 0)
 
   return (
@@ -22,50 +37,48 @@ export function TicketsDistribution() {
       <h2 className="text-lg font-bold text-foreground mb-6">Répartition des tickets</h2>
 
       <div className="flex-1 flex items-center justify-center relative min-h-0">
-       <ResponsiveContainer width="100%" height="100%">
-  {/* AJOUTER LA MARGE ICI pour laisser respirer le cercle */}
-  <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-    <Pie
-      data={data}
-      cx="50%"
-      cy="50%"
-      // UTILISER DES POURCENTAGES pour que ça ne dépasse jamais
-      innerRadius="65%"
-      outerRadius="90%"
-      paddingAngle={5}
-      dataKey="value"
-      animationBegin={0}
-      animationDuration={800}
-    >
-      {data.map((entry, index) => (
-        <Cell 
-          key={`cell-${index}`} 
-          fill={entry.color} 
-          className="outline-none transition-all duration-300 hover:opacity-80"
-        />
-      ))}
-    </Pie>
-    
-   <Tooltip 
-  wrapperStyle={{ 
-    outline: 'none', 
-    zIndex: 9999 
-  }}
-  contentStyle={{ 
-    backgroundColor: '#ffffff', // Fond blanc pur
-    borderRadius: '12px', 
-    border: '1px solid #e5e7eb', // Bordure légère pour mieux définir le bloc
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)', // Ombre plus marquée
-    padding: '12px',
-    color: '#1f2937' // Texte gris très foncé pour la lisibilité
-  }}
-  itemStyle={{ 
-    fontSize: '14px', 
-    fontWeight: '600' // Texte en gras pour qu'il soit bien visible
-  }}
-/>
-  </PieChart>
-</ResponsiveContainer>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+            <Pie
+              data={data}
+              cx="50%"
+              cy="50%"
+              innerRadius="65%"
+              outerRadius="90%"
+              paddingAngle={5}
+              dataKey="value"
+              animationBegin={0}
+              animationDuration={800}
+            >
+              {data.map((entry, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={entry.color}
+                  className="outline-none transition-all duration-300 hover:opacity-80"
+                />
+              ))}
+            </Pie>
+
+            <Tooltip
+              wrapperStyle={{
+                outline: 'none',
+                zIndex: 9999
+              }}
+              contentStyle={{
+                backgroundColor: '#ffffff',
+                borderRadius: '12px',
+                border: '1px solid #e5e7eb',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+                padding: '12px',
+                color: '#1f2937'
+              }}
+              itemStyle={{
+                fontSize: '14px',
+                fontWeight: '600'
+              }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
 
         {/* Total au centre */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
@@ -83,7 +96,9 @@ export function TicketsDistribution() {
               <span className="text-muted-foreground">{item.name}</span>
             </div>
             <span className="font-bold">
-              {item.value} <span className="text-muted-foreground font-normal">({Math.round((item.value / total) * 100)}%)</span>
+              {item.value} <span className="text-muted-foreground font-normal">
+                ({total > 0 ? Math.round((item.value / total) * 100) : 0}%)
+              </span>
             </span>
           </div>
         ))}

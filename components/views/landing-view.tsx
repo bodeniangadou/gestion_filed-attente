@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { supabase } from "@/lib/supabase"; 
-import * as LucideIcons from "lucide-react";
+import { useState, useEffect, useMemo } from "react"
+import { supabase } from "@/lib/supabase"
+import * as LucideIcons from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -39,8 +39,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { useApp, Service } from "@/lib/app-context"
-import { TicketTrackingModal } from "./TicketTrackingModal" // Ajuste le chemin si nécessaire
+import { toast } from "sonner"
+import { useApp, Service, Counter } from "@/lib/app-context"
+import { TicketTrackingModal } from "./TicketTrackingModal"
 
 interface LandingViewProps {
   onNavigate: (tab: string) => void
@@ -50,10 +51,9 @@ interface LandingViewProps {
 }
 
 const DynamicIcon = ({ name, className }: { name: string, className?: string }) => {
-const formattedName = name.charAt(0).toUpperCase() + name.slice(1);
-  const LucideIcon = (LucideIcons as any)[name] || LucideIcons.Building2; 
-  return <LucideIcon className={className} />;
-};
+  const LucideIcon = (LucideIcons as any)[name] || LucideIcons.Building2
+  return <LucideIcon className={className} />
+}
 
 const features = [
   {
@@ -96,8 +96,49 @@ const testimonials = [
   }
 ]
 
+// Décide si un service est réellement actif (horaires + guichet actif disponible)
+const checkServiceStatus = (service: Service, counters: Counter[]) => {
+  if (!service?.openTime || !service?.closeTime) return false
+
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+
+  const [startH, startM] = service.openTime.split(':').map(Number)
+  const [endH, endM] = service.closeTime.split(':').map(Number)
+
+  const openMinutes = startH * 60 + startM
+  const closeMinutes = endH * 60 + endM
+
+  const isTimeValid = currentMinutes >= openMinutes && currentMinutes <= closeMinutes
+
+  const hasActiveCounter = counters.some(c =>
+    c.serviceId === service.id &&
+    c.isActive
+  )
+
+  return isTimeValid && hasActiveCounter
+}
+
+// Génère un code ticket unique, même format que ServicesView (cohérence dans toute l'app)
+function generateUniqueTicketCode(serviceName: string): string {
+  const firstLetter = serviceName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .substring(0, 1)
+    .toUpperCase()
+
+  const num1 = Math.floor(10 + Math.random() * 90)
+  const num2 = Math.floor(10 + Math.random() * 90)
+
+  return `${firstLetter}-${num1}-${num2}`
+}
+
+const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?: string }; statut: string }[]) => {
+  return allTickets.filter(t => t.service?.id === serviceId && t.statut === "waiting").length
+}
+
 export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
-const { services, takeTicket, currentTicket } = useApp()
+  const { services, counters, tickets, fetchTickets } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
@@ -105,50 +146,76 @@ const { services, takeTicket, currentTicket } = useApp()
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showTrackingModal, setShowTrackingModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
-  const [localTicket, setLocalTicket] = useState<{ number: string; service: string; waitTime: number; queuePos: number } | null>(null)
 
-  useEffect(() => {
-    const savedTicket = localStorage.getItem("rang_plus_anonymous_ticket");
-    if (savedTicket) {
-      try {
-        const parsedTicket = JSON.parse(savedTicket);
-        setLocalTicket(parsedTicket);
-      } catch (e) {
-        console.error("Erreur lors de la récupération du ticket sauvegardé", e);
-      }
-    }
-  }, []);
+  // Ticket anonyme suivi via son ID réel en BDD (pas via user/currentTicket,
+  // puisque la landing page sert des visiteurs sans compte connecté)
+  const [trackedTicketId, setTrackedTicketId] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (localTicket) {
-      localStorage.setItem("rang_plus_anonymous_ticket", JSON.stringify(localTicket));
-    } else {
-      localStorage.removeItem("rang_plus_anonymous_ticket");
-    }
-  }, [localTicket]);
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
-  const generatedTicket = currentTicket
-  ? {
-      number: currentTicket.number,
-      service: currentTicket.service.name,
-      waitTime: currentTicket.waitTime || 0,
-      queuePos: currentTicket.position
+
+  // Récupère l'ID du ticket anonyme suivi depuis le localStorage au montage
+  useEffect(() => {
+    const savedId = localStorage.getItem("rang_plus_anonymous_ticket_id")
+    if (savedId) {
+      setTrackedTicketId(savedId)
     }
-    : localTicket
+  }, [])
 
-  const totalWaiting = services.reduce((acc, s) => acc + s.currentQueue, 0)
-  const avgWaitTime = services.length > 0 ? Math.round(services.reduce((acc, s) => acc + s.waitTime, 0) / services.length) : 0
+  useEffect(() => {
+    if (trackedTicketId) {
+      localStorage.setItem("rang_plus_anonymous_ticket_id", trackedTicketId)
+    } else {
+      localStorage.removeItem("rang_plus_anonymous_ticket_id")
+    }
+  }, [trackedTicketId])
 
-  const filteredServices = services.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Ticket suivi = celui dont l'id correspond, retrouvé dans la liste temps réel
+  // du context (`tickets` est rechargé par le canal Realtime sur la table "ticket").
+  // Si le ticket n'est plus actif (terminé/annulé/absent), on arrête de le suivre.
+  const trackedTicket = useMemo(() => {
+    if (!trackedTicketId) return null
+    const found = tickets.find(t => t.id === trackedTicketId)
+    if (!found) return null
+    if (!["waiting", "called", "serving"].includes(found.statut)) return null
+    return found
+  }, [trackedTicketId, tickets])
+
+  // Objet compatible avec ce que LandingView affichait avant (number/service/waitTime/queuePos)
+  const generatedTicket = trackedTicket
+    ? {
+        id: trackedTicket.id,
+        number: trackedTicket.number,
+        service: trackedTicket.service?.name || "",
+        waitTime: Math.max(5, (trackedTicket.position || 1) * 5),
+        queuePos: trackedTicket.position,
+        statut: trackedTicket.statut,
+        counterName: trackedTicket.counterName,
+        phoneNumber: trackedTicket.phone,
+      }
+    : null
+
+  // Si le ticket suivi disparaît de la liste (terminé/annulé), on nettoie le suivi local
+  useEffect(() => {
+    if (trackedTicketId && !trackedTicket) {
+      setTrackedTicketId(null)
+    }
+  }, [trackedTicketId, trackedTicket])
+
+  const totalWaiting = tickets.filter(t => t.statut === "waiting").length
+
+  const servicesWithStatus = useMemo(() => {
+    return services.map(s => ({
+      ...s,
+      isActive: checkServiceStatus(s, counters)
+    }))
+  }, [services, counters])
 
   const handleOpenTicketModal = (service: Service) => {
     if (!service.isActive) return
@@ -156,25 +223,156 @@ const { services, takeTicket, currentTicket } = useApp()
     setShowTicketModal(true)
   }
 
-  const handleConfirmTicket = () => {
-    if (!selectedService || !formData.nomComplet || !formData.telephone) return
+  // CORRIGÉ : Ouverture automatique du modal via ?service=xxx dans l'URL (venant du
+  // scan d'un QR code, soit directement, soit via la redirection de /scanner/[serviceId]).
+  // On vérifie désormais le statut RÉEL et dynamique du service (horaires + guichet actif
+  // disponible, via servicesWithStatus) plutôt que le simple champ `isActive` statique de
+  // la base — pour rester cohérent avec ce qui est affiché ailleurs sur la page : un
+  // service marqué actif en base mais hors horaires ou sans guichet ne doit pas ouvrir
+  // le formulaire de prise de ticket.
+  useEffect(() => {
+    if (services.length === 0 || selectedService) return
 
-    const parts = formData.nomComplet.trim().split(" ")
-    const prenom = parts[0] || "Patient"
-    const nom = parts.slice(1).join(" ") || "Anonyme"
+    const params = new URLSearchParams(window.location.search)
+    const serviceId = params.get("service") || params.get("scan")
+    if (!serviceId) return
 
-    const ticket = takeTicket(selectedService, nom, prenom)
+    const serviceToSelect = services.find(s => s.id === serviceId)
+    if (!serviceToSelect) return
 
-    if (ticket) {
-      setLocalTicket({
-        number: ticket.number,
-        service: selectedService.name,
-        waitTime: selectedService.waitTime,
-        queuePos: selectedService.currentQueue + 1
+    const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
+
+    if (isReallyActive) {
+      handleOpenTicketModal(serviceToSelect)
+    } else {
+      toast.error("Service indisponible", {
+        description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
       })
+    }
+
+    window.history.replaceState({}, document.title, window.location.pathname)
+  }, [services, servicesWithStatus, selectedService])
+
+  const activeServices = services.filter(s => s.isActive)
+  const avgWaitTime = activeServices.length > 0
+    ? Math.round(
+        activeServices.reduce((acc, s) => {
+          const queueForService = tickets.filter(t => t.service?.id === s.id && t.statut === "waiting").length
+          return acc + (queueForService * 5)
+        }, 0) / activeServices.length
+      )
+    : 0
+
+  const filteredServices = services.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.description.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  // Vérification anti-doublon en BDD (nom ET téléphone) avant insertion réelle
+  // dans Supabase + resynchronisation, exactement comme ServicesView.
+  const handleConfirmTicket = async () => {
+    if (!selectedService || !formData.nomComplet || !formData.telephone || isSubmitting) return
+
+    setIsSubmitting(true)
+
+    try {
+      const fullName = formData.nomComplet.trim()
+      const phoneValue = formData.telephone.trim()
+
+      // Vérifie qu'aucun ticket actif n'existe déjà pour ce nom sur ce service
+      const { data: existingActiveTickets, error: checkError } = await supabase
+        .from("ticket")
+        .select("id")
+        .ilike("patient_nom", fullName)
+        .eq("id_service", selectedService.id)
+        .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
+
+      if (checkError) throw checkError
+
+      if (existingActiveTickets && existingActiveTickets.length > 0) {
+        toast.error("Ticket déjà actif", {
+          description: `Un ticket actif existe déjà au nom de ${fullName} pour le service ${selectedService.name}.`
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      // Vérifie aussi par numéro de téléphone, pour éviter le contournement par nom légèrement différent
+      const { data: existingPhoneTickets, error: checkPhoneError } = await supabase
+        .from("ticket")
+        .select("id")
+        .eq("telephone_patient", phoneValue)
+        .eq("id_service", selectedService.id)
+        .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
+
+      if (checkPhoneError) throw checkPhoneError
+
+      if (existingPhoneTickets && existingPhoneTickets.length > 0) {
+        toast.error("Ticket déjà actif", {
+          description: "Ce numéro de téléphone a déjà un ticket actif pour ce service."
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      // Trouve un guichet actif disponible pour ce service
+      const activeCounters = counters.filter(c => c.serviceId === selectedService.id && c.isActive)
+      if (activeCounters.length === 0) {
+        toast.error("Service indisponible", {
+          description: "Aucun guichet n'est disponible pour ce service actuellement."
+        })
+        setIsSubmitting(false)
+        return
+      }
+
+      let targetCounter = activeCounters[0]
+      let minWaiting = Infinity
+      activeCounters.forEach((counter) => {
+        const waitingAtThisCounter = tickets.filter(
+          (t) => t.counterId === counter.id && t.statut === "waiting"
+        ).length
+        if (waitingAtThisCounter < minWaiting) {
+          minWaiting = waitingAtThisCounter
+          targetCounter = counter
+        }
+      })
+
+      const ticketNumber = generateUniqueTicketCode(selectedService.name)
+
+      const { data, error } = await supabase
+        .from("ticket")
+        .insert([
+          {
+            code: ticketNumber,
+            id_service: selectedService.id,
+            id_guichet: targetCounter.id,
+            id_patient_connecte: null,
+            statut: "waiting",
+            patient_nom: fullName,
+            telephone_patient: phoneValue,
+          },
+        ])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Resynchronisation immédiate du state global temps réel
+      await fetchTickets()
+
+      // On suit ce ticket par son vrai ID BDD désormais
+      setTrackedTicketId(data.id)
+
       setShowTicketModal(false)
       setShowSuccessModal(true)
       setFormData({ nomComplet: "", telephone: "" })
+      toast.success("Ticket créé avec succès !")
+
+    } catch (err) {
+      console.error(err)
+      toast.error("Erreur", { description: "Impossible d'enregistrer votre ticket. Veuillez réessayer." })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -184,6 +382,28 @@ const { services, takeTicket, currentTicket } = useApp()
       setFormData({ nomComplet: "", telephone: "" })
     } else {
       setShowTicketModal(true)
+    }
+  }
+
+  // Annulation réelle en BDD du ticket suivi
+  const handleCancelTrackedTicket = async () => {
+    if (!trackedTicketId) return
+    try {
+      const { error } = await supabase
+        .from("ticket")
+        .update({ statut: "cancelled" })
+        .eq("id", trackedTicketId)
+
+      if (error) throw error
+
+      await fetchTickets()
+      toast.success("Ticket annulé")
+    } catch (err) {
+      console.error(err)
+      toast.error("Erreur", { description: "Impossible d'annuler le ticket." })
+    } finally {
+      setTrackedTicketId(null)
+      setShowTrackingModal(false)
     }
   }
 
@@ -282,7 +502,7 @@ const { services, takeTicket, currentTicket } = useApp()
                 href="#services-section"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
-              >
+          >
                 <Stethoscope className="size-5 text-primary" />
                 Services
               </a>
@@ -444,66 +664,87 @@ const { services, takeTicket, currentTicket } = useApp()
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Nos Services Médicaux</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Recherchez et sélectionnez le service dont vous avez besoin pour prendre votre ticket immédiatement.
+              Recherchez ou scanner le service dont vous avez besoin pour prendre votre ticket immédiatement.
             </p>
           </motion.div>
 
           <div className="relative mb-8">
-            <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher un service (ex: Radiologie, Urgences...)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-14 rounded-2xl border-2 bg-card pl-12 pr-4 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
-            />
-          </div>
+  {/* Icône de recherche à gauche */}
+  <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+  
+  <Input
+    placeholder="Rechercher un service..."
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    /* On change 'pr-4' en 'pr-14' pour laisser la place à l'icône de droite */
+    className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
+  />
+
+  {/* Icône de scan à droite */}
+  <button 
+    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+    onClick={onScanQR}
+  >
+    <QrCode className="size-6" />
+  </button>
+</div>
 
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filteredServices
-            .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
-            .map((service) => (
-              <motion.div key={service.id} variants={itemVariants}>
-                <Card
-                  className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive
-                      ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
-                      : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
-                    }`}
-                  onClick={() => handleOpenTicketModal(service)}
-                >
-                  <CardContent className="p-5 flex flex-col h-full justify-between">
-                    <div>
-                      <div className="flex items-start justify-between mb-3">
-                        <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive
-                            ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
-                            : "bg-muted text-muted-foreground"
-                          }`}>
-<DynamicIcon name={service.icon} className="size-5" />
+              .map((service) => ({
+                ...service,
+                isActive: servicesWithStatus.find(s => s.id === service.id)?.isActive ?? service.isActive
+              }))
+              .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
+              .map((service) => (
+                <motion.div key={service.id} variants={itemVariants}>
+                  <Card
+                    className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive
+                        ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
+                        : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
+                      }`}
+                    onClick={() => handleOpenTicketModal(service)}
+                  >
+                    <CardContent className="p-5 flex flex-col h-full justify-between">
+                      <div>
+                        <div className="flex items-start justify-between mb-3">
+                          <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive
+                              ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                            }`}>
+                            <DynamicIcon name={service.icon} className="size-5" />
+                          </div>
+                          <Badge
+                            variant={service.isActive ? "outline" : "destructive"}
+                            className="text-xs"
+                          >
+                            {service.isActive
+                              ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
+                              : "Fermé"
+                            }
+                          </Badge>
                         </div>
-                        <Badge variant={service.isActive ? "outline" : "destructive"} className="text-xs">
-                          {service.isActive ? `${service.currentQueue} en attente` : "Fermé"}
-                        </Badge>
+                        <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
+                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
                       </div>
-                      <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
-                      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
-                    </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Clock className="size-4" />
-                        <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                      <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
+                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Clock className="size-4" />
+                          <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                        </div>
+                        {service.isActive ? (
+                          <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                            Prendre ticket <ChevronRight className="size-4" />
+                          </span>
+                        ) : (
+                          <span className="text-xs font-medium text-destructive">Fermé</span>
+                        )}
                       </div>
-                      {service.isActive ? (
-                        <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                          Prendre ticket <ChevronRight className="size-4" />
-                        </span>
-                      ) : (
-                        <span className="text-xs font-medium text-destructive">Fermé</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
           </motion.div>
 
           <div className="text-center mt-8">
@@ -552,9 +793,9 @@ const { services, takeTicket, currentTicket } = useApp()
             <Button
               className="flex-1 h-12 bg-primary text-white hover:bg-primary/90 rounded-xl font-semibold"
               onClick={handleConfirmTicket}
-              disabled={!formData.nomComplet || !formData.telephone}
+              disabled={!formData.nomComplet || !formData.telephone || isSubmitting}
             >
-              Confirmer mon rang
+              {isSubmitting ? "Validation..." : "Confirmer mon rang"}
             </Button>
           </div>
         </DialogContent>
@@ -594,19 +835,16 @@ const { services, takeTicket, currentTicket } = useApp()
         </DialogContent>
       </Dialog>
 
-     {generatedTicket && (
-  <TicketTrackingModal
-    isOpen={showTrackingModal}
-    onClose={() => setShowTrackingModal(false)}
-    ticket={generatedTicket}
-    onCancelTicket={() => {
-      setLocalTicket(null);
-      setShowTrackingModal(false);
-    }}
-  />
-   )}
+      {generatedTicket && (
+        <TicketTrackingModal
+          isOpen={showTrackingModal}
+          onClose={() => setShowTrackingModal(false)}
+          ticket={generatedTicket}
+          onCancelTicket={handleCancelTrackedTicket}
+        />
+      )}
 
-   
+
       {/* COMPOSANT WHY US */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">

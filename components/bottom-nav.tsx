@@ -47,6 +47,7 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
   // --- Admin ---
   return [
     { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
+    { icon: Ticket, label: "Tickets", href: "/admin/ticket" },
     { icon: Users, label: "Agents", href: "/admin/agents" },
     { icon: Stethoscope, label: "Services", href: "/admin/services" },
     { icon: Monitor, label: "Guichets", href: "/admin/counters" },

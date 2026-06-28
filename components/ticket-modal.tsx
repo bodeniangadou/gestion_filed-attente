@@ -1,314 +1,235 @@
-"use client"
-
-import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import React from 'react'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  Building2,
-  Clock,
-  Users,
-  CheckCircle2,
-  ArrowRight,
-  Ticket,
-  Stethoscope,
-  Siren,
-  ScanLine,
-  FlaskConical,
-  Pill,
-  HeartPulse,
-} from "lucide-react"
-import { useApp, Service } from "@/lib/app-context"
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field"
+  X, CheckCircle2, MessageSquare, QrCode,
+  MapPin, Clock, AlertCircle, Trash2, Activity, Bell, ArrowRight
+} from 'lucide-react'
 
-interface TicketModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onSuccess: () => void
+interface TicketTrackingModalProps {
+  isOpen: boolean
+  onClose: () => void
+  ticket: {
+    number: string
+    service: string
+    waitTime: number
+    queuePos: number
+    statut?: string
+    counterName?: string
+    phoneNumber?: string
+  } | null
+  onCancelTicket: () => void
 }
 
-const serviceIcons: Record<string, React.ReactNode> = {
-  "stethoscope": <Stethoscope className="size-5" />,
-  "siren": <Siren className="size-5" />,
-  "scan": <ScanLine className="size-5" />,
-  "flask": <FlaskConical className="size-5" />,
-  "pill": <Pill className="size-5" />,
-  "heart-pulse": <HeartPulse className="size-5" />,
-}
+export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
+  isOpen,
+  onClose,
+  ticket,
+  onCancelTicket
+}) => {
+  if (!isOpen || !ticket) return null
 
-type Step = "service" | "info" | "success"
+  const isCalled = ticket.statut === "called" || ticket.statut === "serving"
+  const guichet = ticket.counterName || "Guichet à confirmer"
+  const displayPhone = ticket.phoneNumber || "+223 XX XX XX XX"
 
-export function TicketModal({ open, onOpenChange, onSuccess }: TicketModalProps) {
-  const { services, user, takeTicket, currentTicket } = useApp()
-  const [step, setStep] = useState<Step>("service")
-  const [selectedService, setSelectedService] = useState<Service | null>(null)
-  const [firstName, setFirstName] = useState(user?.firstName || "")
-  const [lastName, setLastName] = useState(user?.name || "")
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const progress = isCalled ? 100 : Math.max(15, Math.min(95, 100 - (ticket.queuePos * 10)))
 
-  const handleSelectService = (service: Service) => {
-    setSelectedService(service)
-    if (user) {
-      // If user is already logged in, skip to confirmation
-      handleTakeTicket(service, user.firstName, user.name)
-    } else {
-      setStep("info")
-    }
+  // ── ÉTAT "C'EST VOTRE TOUR" : design complètement différent, impossible à manquer ──
+  if (isCalled) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="relative w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200 bg-gradient-to-br from-rose-600 via-rose-500 to-orange-500">
+
+          {/* Pulse de fond animé */}
+          <div className="absolute inset-0 opacity-30">
+            <div className="absolute top-0 left-1/4 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse" />
+            <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-yellow-300 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
+          </div>
+
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 z-10 p-2 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-white"
+          >
+            <X className="size-5" />
+          </button>
+
+          <div className="relative z-10 p-8 sm:p-10 text-center">
+
+            {/* Cloche animée géante */}
+            <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-white/20 animate-bounce">
+              <Bell className="size-10 text-white" fill="white" />
+            </div>
+
+            <p className="text-white/90 text-sm font-bold uppercase tracking-widest mb-1">
+              {ticket.service}
+            </p>
+            <h1 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-6 drop-shadow-md">
+              C'EST VOTRE TOUR !
+            </h1>
+
+            {/* Numéro de ticket, plus discret ici */}
+            <div className="inline-flex items-center gap-2 bg-white/15 rounded-full px-5 py-2 mb-8">
+              <span className="text-xs font-bold text-white/80 uppercase">Ticket</span>
+              <span className="text-xl font-black text-white">{ticket.number}</span>
+            </div>
+
+            {/* LE GUICHET : élément central, géant */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl mb-6">
+              <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-2 flex items-center justify-center gap-1.5">
+                <MapPin className="size-3.5" /> Dirigez-vous immédiatement vers
+              </p>
+              <p className="text-5xl sm:text-6xl font-black text-rose-600 tracking-tight leading-none">
+                {guichet}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-white/90 text-sm font-semibold mb-8">
+              <ArrowRight className="size-4 animate-pulse" />
+              <span>Présentez votre numéro {ticket.number} à l'agent</span>
+            </div>
+
+            <button
+              onClick={() => {
+                                onCancelTicket()
+
+              }}
+              className="text-white/70 hover:text-white text-xs font-medium underline transition-colors"
+            >
+              Annuler mon ticket
+            </button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
-  const handleTakeTicket = (service: Service, fName: string, lName: string) => {
-    setIsSubmitting(true)
-    
-    // Simulate API call
-    setTimeout(() => {
-      takeTicket(service, lName, fName)
-      setStep("success")
-      setIsSubmitting(false)
-    }, 1000)
-  }
-
-  const handleSubmitInfo = () => {
-    if (!selectedService || !firstName.trim() || !lastName.trim()) return
-    handleTakeTicket(selectedService, firstName, lastName)
-  }
-
-  const handleClose = () => {
-    onOpenChange(false)
-    // Reset state after animation
-    setTimeout(() => {
-      setStep("service")
-      setSelectedService(null)
-      setFirstName(user?.firstName || "")
-      setLastName(user?.name || "")
-    }, 300)
-  }
-
-  const handleViewTicket = () => {
-    handleClose()
-    onSuccess()
-  }
-
+  // ── ÉTAT NORMAL : en attente, design d'origine ──
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <AnimatePresence mode="wait">
-          {step === "service" && (
-            <motion.div
-              key="service"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Ticket className="size-5 text-primary" />
-                  Prendre un Ticket
-                </DialogTitle>
-                <DialogDescription>
-                  Sélectionnez le service pour lequel vous souhaitez prendre un ticket
-                </DialogDescription>
-              </DialogHeader>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
 
-              <div className="mt-4 space-y-3 max-h-[50vh] overflow-y-auto pr-1">
-                {services.map((service) => (
-                  <Card
-                    key={service.id}
-                    className="cursor-pointer border-2 border-transparent transition-all hover:border-primary hover:shadow-md"
-                    onClick={() => handleSelectService(service)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                          {serviceIcons[service.icon] || <Building2 className="size-5" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-foreground truncate">{service.name}</h3>
-                          <p className="text-sm text-muted-foreground truncate">{service.description}</p>
-                          <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
-                            <div className="flex items-center gap-1">
-                              <Users className="size-3" />
-                              <span>{service.currentQueue} en attente</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="size-3" />
-                              <span>~{service.waitTime} min</span>
-                            </div>
-                          </div>
-                        </div>
-                        <ArrowRight className="size-5 text-muted-foreground shrink-0" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </motion.div>
-          )}
+      {/* CARD PRINCIPALE */}
+      <div className="relative w-full max-w-4xl bg-slate-50 dark:bg-slate-900 rounded-[24px] shadow-2xl border border-border overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
 
-          {step === "info" && selectedService && (
-            <motion.div
-              key="info"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-            >
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  <Ticket className="size-5 text-primary" />
-                  Vos Informations
-                </DialogTitle>
-                <DialogDescription>
-                  Entrez vos informations pour recevoir votre ticket
-                </DialogDescription>
-              </DialogHeader>
+        {/* EN-TÊTE MODAL */}
+        <div className="flex items-center justify-between px-6 py-5 bg-card border-b border-border/60">
+          <div className="flex items-center gap-3">
+            <div>
+              <h2 className="font-bold text-xl text-foreground tracking-tight">Suivi de mon ticket en direct</h2>
+              <p className="text-xs text-muted-foreground hidden sm:block">Votre position dans la file en temps réel</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-muted transition-colors text-muted-foreground border border-border/50">
+            <X className="size-5" />
+          </button>
+        </div>
 
-              {/* Selected Service Summary */}
-              <Card className="mt-4 border-primary/30 bg-primary/5">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                      {serviceIcons[selectedService.icon] || <Building2 className="size-4" />}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-foreground">{selectedService.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedService.currentQueue} personnes en attente
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+        {/* CONTENU EN DEUX COLONNES */}
+        <div className="p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 max-h-[calc(100vh-140px)] overflow-y-auto">
 
-              {/* Form */}
-              <FieldGroup className="mt-6">
-                <Field>
-                  <FieldLabel htmlFor="firstName">Prénom</FieldLabel>
-                  <Input
-                    id="firstName"
-                    placeholder="Entrez votre prénom"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="h-12 rounded-xl"
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="lastName">Nom</FieldLabel>
-                  <Input
-                    id="lastName"
-                    placeholder="Entrez votre nom"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="h-12 rounded-xl"
-                  />
-                </Field>
-              </FieldGroup>
+          {/* COLONNE GAUCHE (7/12) : SERVICE, NUMÉRO & PROGRESSION */}
+          <div className="md:col-span-7 space-y-6">
 
-              <div className="mt-6 flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => setStep("service")}
-                  className="flex-1 h-12 rounded-xl"
-                >
-                  Retour
-                </Button>
-                <Button
-                  onClick={handleSubmitInfo}
-                  disabled={!firstName.trim() || !lastName.trim() || isSubmitting}
-                  className="flex-1 h-12 rounded-xl bg-primary"
-                >
-                  {isSubmitting ? (
-                    <span className="flex items-center gap-2">
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="size-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                      />
-                      Création...
-                    </span>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="size-4 mr-2" />
-                      Confirmer
-                    </>
-                  )}
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {step === "success" && currentTicket && (
-            <motion.div
-              key="success"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="text-center"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-primary/10"
-              >
-                <CheckCircle2 className="size-10 text-primary" />
-              </motion.div>
-
-              <DialogHeader className="text-center">
-                <DialogTitle className="text-2xl">Ticket Créé !</DialogTitle>
-                <DialogDescription>
-                  Votre ticket a été créé avec succès
-                </DialogDescription>
-              </DialogHeader>
-
-              {/* Ticket Card */}
-              <Card className="mt-6 overflow-hidden border-2 border-primary/30">
-                <div className="bg-primary px-4 py-3 text-primary-foreground">
-                  <p className="text-sm font-medium">Hôpital du Mali</p>
+            {/* EN-TÊTE DU PASSAGE (Service & Guichet) */}
+            <div className="bg-emerald-500 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
+              <div className="space-y-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Service</span>
+                <h3 className="text-2xl font-black tracking-tight">{ticket.service}</h3>
+                <div className="flex items-center gap-2 text-sm font-bold pt-1">
+                  <MapPin className="size-4 shrink-0 text-emerald-100" />
+                  <span>{guichet}</span>
                 </div>
-                <CardContent className="p-6">
-                  <div className="mb-4">
-                    <Badge variant="outline" className="mb-2">
-                      {currentTicket.service.name}
-                    </Badge>
-                    <p className="text-5xl font-bold text-primary">{currentTicket.number}</p>
-                  </div>
-                  
-                  <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">{currentTicket.position}</p>
-                      <p>Position</p>
-                    </div>
-                    <div className="h-8 w-px bg-border" />
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">~{currentTicket.service.waitTime}</p>
-                      <p>Minutes</p>
-                    </div>
-                  </div>
+              </div>
+              <div className="p-3 bg-white/10 rounded-xl hidden sm:block">
+                <Activity className="size-10 text-white" />
+              </div>
+            </div>
 
-                  <p className="mt-4 text-sm text-muted-foreground">
-                    {currentTicket.userName}
+            {/* BLOCK CENTRAL : LE NUMÉRO */}
+            <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-sm relative">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
+                Votre Numéro de Passage
+              </span>
+              <h1 className="text-7xl font-black text-emerald-500 tracking-tighter my-2">
+                {ticket.number}
+              </h1>
+              <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-1.5 rounded-full text-xs font-bold">
+                <CheckCircle2 className="size-4" />
+                Ticket Actif & Validé
+              </div>
+
+              {/* JAUGE DE PROGRESSION */}
+              <div className="space-y-2 pt-4 border-t border-border text-left">
+                <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                  <span>Avancement de la file</span>
+                  <span className="text-emerald-500 text-sm font-black">{progress}%</span>
+                </div>
+                <div className="w-full h-3 bg-muted rounded-full overflow-hidden border border-border/30">
+                  <div className="h-full bg-emerald-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* COLONNE DROITE (5/12) : RANG, SMS & ANNULATION */}
+          <div className="md:col-span-5 flex flex-col justify-between space-y-4">
+
+            {/* COMPTEUR DE RANG */}
+            <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-4">
+                <div className="size-16 rounded-2xl border-2 border-emerald-500 flex flex-col items-center justify-center shrink-0 bg-emerald-500/5">
+                  <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">{ticket.queuePos}</span>
+                  <span className="text-[10px] text-muted-foreground font-bold uppercase mt-1">Rang</span>
+                </div>
+                <div className="space-y-1">
+                  <p className="font-bold text-base text-foreground">
+                    {ticket.queuePos} {ticket.queuePos > 1 ? 'personnes attendent' : 'personne attend'} avant vous
                   </p>
-                </CardContent>
-              </Card>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Clock className="size-4 text-amber-500 shrink-0" />
+                    <span className="text-foreground font-semibold">~ {ticket.waitTime} min d'attente</span>
+                  </div>
+                </div>
+              </div>
 
-              <Button
-                onClick={handleViewTicket}
-                className="mt-6 h-12 w-full rounded-xl bg-primary"
+              {/* CONSIGNE DIRECTE */}
+              <div className="p-3 bg-amber-500/5 border border-amber-500/20 text-foreground rounded-xl text-xs font-medium flex gap-2.5 items-start">
+                <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
+                <p>
+                  Dès que votre tour approche, veuillez vous diriger vers le <span className="font-bold text-emerald-600 dark:text-emerald-400">{guichet}</span>.
+                </p>
+              </div>
+            </div>
+
+            {/* NOTIFICATION SMS */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 bg-card border border-border rounded-xl p-3.5 shadow-sm">
+                <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl shrink-0">
+                  <MessageSquare className="size-5" />
+                </div>
+                <div className="text-xs">
+                  <p className="font-bold text-foreground">Notification active</p>
+                  <p className="text-muted-foreground">
+                    Vous recevrez une notification SMS automatique sur votre numéro : <span className="font-bold text-foreground">{displayPhone}</span>.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* BOUTON D'ANNULATION NET ET PRÉCIS */}
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                                      onCancelTicket()
+                }}
+                className="w-full py-3.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/20 dark:text-rose-400 dark:hover:bg-rose-950/40 border border-rose-200 dark:border-rose-900/30 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
               >
-                Suivre mon Ticket
-              </Button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </DialogContent>
-    </Dialog>
+                <Trash2 className="size-4" />
+                Annuler mon ticket
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

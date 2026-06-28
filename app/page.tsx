@@ -3,11 +3,14 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { LandingView } from "@/components/views/landing-view"
-import { LoginModal } from "@/components/login-modal" 
+import { LoginModal } from "@/components/login-modal"
+import { LandingScannerModal } from "@/components/views/LandingScannerModal"
+import { Service } from "@/lib/app-context"
 
 export default function HomePage() {
   const router = useRouter()
   const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
 
   const handleTakeTicket = () => {
     const element = document.getElementById("services-section")
@@ -19,29 +22,41 @@ export default function HomePage() {
   }
 
   const handleScanQR = () => {
-    alert("Fonctionnalité de scan QR Code (Simulation) : Caméra indisponible en maquette locale.")
+    setIsScannerOpen(true)
   }
 
   const handleLogin = () => {
     setIsLoginOpen(true)
   }
 
+  // Une fois le QR scanné et validé, on redirige avec le paramètre ?service=...
+  // que LandingView sait déjà lire pour ouvrir automatiquement le formulaire
+  // de prise de ticket correspondant.
+  const handleServiceScanned = (service: Service) => {
+    router.push(`/?service=${service.id}`)
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <LandingView 
+      <LandingView
         onNavigate={(tab) => router.push(`/${tab}`)}
         onScanQR={handleScanQR}
         onTakeTicket={handleTakeTicket}
         onLogin={handleLogin}
       />
 
-      <LoginModal 
-        open={isLoginOpen} 
+      <LoginModal
+        open={isLoginOpen}
         onOpenChange={setIsLoginOpen}
         onSuccess={() => {
-          
           console.log("Utilisateur connecté avec succès !")
         }}
+      />
+
+      <LandingScannerModal
+        open={isScannerOpen}
+        onOpenChange={setIsScannerOpen}
+        onServiceScanned={handleServiceScanned}
       />
     </div>
   )

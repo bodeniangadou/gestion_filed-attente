@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -135,6 +134,7 @@ export default function AgentDashboard() {
   const [isAnnouncing, setIsAnnouncing] = useState(false)
   const [lastAction, setLastAction] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState(false)
 
   const activeRange = useMemo(() => {
     if (datePreset === "custom" && dateRange?.from) {
@@ -152,17 +152,17 @@ export default function AgentDashboard() {
   const filteredTickets = useMemo(() => {
     if (!counter?.serviceId) return []
     return tickets
-      .filter((t) => t.service.id === counter.serviceId)
+      .filter((t) => t.service?.id === counter.serviceId)
       .filter((t) => ticketInRange(t, activeRange.from, activeRange.to))
   }, [tickets, counter?.serviceId, activeRange])
 
   const ticketStats = useMemo(() => ({
     waiting: filteredTickets.filter(
-      (t) => t.status === "waiting" || t.status === "called" || t.status === "serving"
+      (t) => t.statut === "waiting" || t.statut === "called" || t.statut === "serving"
     ).length,
-    completed: filteredTickets.filter((t) => t.status === "completed").length,
-    cancelled: filteredTickets.filter((t) => t.status === "cancelled").length,
-    absent: filteredTickets.filter((t) => t.status === "absent").length,
+    completed: filteredTickets.filter((t) => t.statut === "completed").length,
+    cancelled: filteredTickets.filter((t) => t.statut === "cancelled").length,
+    absent: filteredTickets.filter((t) => t.statut === "absent").length,
   }), [filteredTickets])
 
   const dateLabel = useMemo(() => {
@@ -187,58 +187,78 @@ export default function AgentDashboard() {
     if (range?.from) setDatePreset("custom")
   }
 
+  // CORRIGÉ : counter.currentTicket n'existe pas dans le type Counter.
+  // Le patient actuel est désormais dérivé du tableau `tickets` (temps réel via
+  // le canal Realtime du context) : ticket rattaché à ce guichet avec statut
+  // "called" ou "serving".
   useEffect(() => {
-    if (counter) {
-      if (counter.currentTicket) {
-        setCurrentPatient(counter.currentTicket)
-      } else {
-        setCurrentPatient(null)
-      }
-      setIsLoading(false)
-    } else {
+    if (!counter) {
       const timer = setTimeout(() => setIsLoading(false), 1000)
       return () => clearTimeout(timer)
     }
-  }, [counter])
 
-  const handleCallNext = () => {
-    if (!counter) return
-    const nextTicket = callNextPatient()
-    if (nextTicket) {
-      setCurrentPatient(nextTicket)
-      setIsAnnouncing(true)
-      setLastAction(`Ticket ${nextTicket.number} appelé`)
-      setTimeout(() => setIsAnnouncing(false), 3000)
+    const ticketActif = tickets.find(
+      (t) => t.counterId === counter.id && (t.statut === "called" || t.statut === "serving")
+    )
+    setCurrentPatient(ticketActif || null)
+    setIsLoading(false)
+  }, [counter, tickets])
+
+  const handleCallNext = async () => {
+    if (!counter || actionLoading) return
+    setActionLoading(true)
+    try {
+      const nextTicket = await callNextPatient()
+      if (nextTicket) {
+        setCurrentPatient(nextTicket)
+        setIsAnnouncing(true)
+        setLastAction(`Ticket ${nextTicket.number} appelé`)
+        setTimeout(() => setIsAnnouncing(false), 3000)
+      }
+    } finally {
+      setActionLoading(false)
     }
   }
 
-  const handleRecall = () => {
-    if (currentPatient) {
-      recallPatient(currentPatient.id)
+  const handleRecall = async () => {
+    if (!currentPatient || actionLoading) return
+    setActionLoading(true)
+    try {
+      await recallPatient(currentPatient.id)
       setIsAnnouncing(true)
       setLastAction(`Rappel du ticket ${currentPatient.number}`)
       setTimeout(() => setIsAnnouncing(false), 3000)
+    } finally {
+      setActionLoading(false)
     }
   }
 
-  const handleMarkAbsent = () => {
-    if (currentPatient) {
-      markAbsent(currentPatient.id)
+  const handleMarkAbsent = async () => {
+    if (!currentPatient || actionLoading) return
+    setActionLoading(true)
+    try {
+      await markAbsent(currentPatient.id)
       setLastAction(`Ticket ${currentPatient.number} marqué absent`)
       setCurrentPatient(null)
+    } finally {
+      setActionLoading(false)
     }
   }
 
-  const handleComplete = () => {
-    if (currentPatient) {
-      completeService(currentPatient.id)
+  const handleComplete = async () => {
+    if (!currentPatient || actionLoading) return
+    setActionLoading(true)
+    try {
+      await completeService(currentPatient.id)
       setLastAction(`Ticket ${currentPatient.number} terminé`)
       setCurrentPatient(null)
+    } finally {
+      setActionLoading(false)
     }
   }
 
-  const handleToggleCounter = (open: boolean) => {
-    toggleCounter(open)
+  const handleToggleCounter = async (open: boolean) => {
+    await toggleCounter(open)
     setLastAction(open ? "Guichet ouvert" : "Guichet fermé")
   }
 

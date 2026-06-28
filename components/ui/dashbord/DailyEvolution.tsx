@@ -11,22 +11,45 @@ import {
   AreaChart,
   ResponsiveContainer,
 } from "recharts"
-
-const data = [
-  { heure: "08h", tickets: 3 },
-  { heure: "09h", tickets: 9 },
-  { heure: "10h", tickets: 11 },
-  { heure: "11h", tickets: 18 },
-  { heure: "12h", tickets: 19 },
-  { heure: "13h", tickets: 34 },
-  { heure: "14h", tickets: 34 },
-  { heure: "15h", tickets: 38 },
-  { heure: "16h", tickets: 41 },
-  { heure: "17h", tickets: 52 },
-  { heure: "18h", tickets: 52 },
-]
+import { useMemo } from "react"
+import { useApp } from "@/lib/app-context"
 
 export function DailyEvolution() {
+  const { tickets, getAgentCounter } = useApp()
+  const counter = getAgentCounter()
+
+  const data = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // Tickets du service de l'agent, pris aujourd'hui uniquement
+    const todayServiceTickets = tickets.filter((t) => {
+      if (!counter || t.service?.id !== counter.serviceId) return false
+      return new Date(t.createdAt) >= today
+    })
+
+    // Heures de service : 08h à 18h (ajuste si ton hôpital a d'autres horaires)
+    const startHour = 8
+    const endHour = 18
+    const hourBuckets: { heure: string; tickets: number }[] = []
+
+    let cumulative = 0
+    for (let h = startHour; h <= endHour; h++) {
+      const countThisHour = todayServiceTickets.filter((t) => {
+        const ticketHour = new Date(t.createdAt).getHours()
+        return ticketHour === h
+      }).length
+
+      cumulative += countThisHour
+      hourBuckets.push({
+        heure: `${String(h).padStart(2, "0")}h`,
+        tickets: cumulative,
+      })
+    }
+
+    return hourBuckets
+  }, [tickets, counter])
+
   return (
     <div className="bg-card rounded-xl border border-border shadow-sm p-6 h-[400px] flex flex-col">
       <div className="flex justify-between items-center mb-6">

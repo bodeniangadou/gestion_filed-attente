@@ -39,7 +39,6 @@ interface LoginModalProps {
 type AuthMode = "login" | "register" | "role-select" 
 
 export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
-  const { setUser } = useApp()
   const [mode, setMode] = useState<AuthMode>("login")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter() 
@@ -64,46 +63,104 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     resetForm()
     onOpenChange(false)
   }
-const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault()
-  setIsLoading(true)
-  
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
 
-  if (error) {
-  toast.error("Erreur de connexion", {
-    description: error.message === "Invalid login credentials" 
-      ? "Email ou mot de passe incorrect" 
-      : error.message
-  })
-  setIsLoading(false)
-  return
-}
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
 
-  // Récupérer le rôle dans ta table
-  const { data: profile } = await supabase
-    .from("utilisateur")
-    .select("role")
-    .eq("id", data.user.id)
-    .single()
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
-  setUser({
-    id: data.user.id,
-    email: data.user.email || "",
-    role: profile?.role || "patient",
-    firstName: "", // À charger depuis le profile si besoin
-    lastName: "",
-    name: ""
-  })
-  
-  setIsLoading(false)
-  handleClose()
-  onSuccess()
-  router.push(profile?.role === "admin" ? "/admin" : profile?.role === "agent" ? "/agent" : "/patient")
-}
+    if (error) {
+      toast.error("Erreur de connexion", {
+        description: error.message === "Invalid login credentials" 
+          ? "Email ou mot de passe incorrect" 
+          : error.message
+      })
+      setIsLoading(false)
+      return
+    }
+
+    // Récupérer le profil (rôle + statut de bannissement) uniquement pour les
+    // vérifications ci-dessous. Le peuplement de `user` dans le context est
+    // désormais entièrement délégué à loadUserProfile(), déjà abonné à
+    // onAuthStateChange("SIGNED_IN") dans app-context.tsx — une seule source
+    // de vérité, plus de duplication ni de risque d'écrasement entre les deux.
+    const { data: profile, error: profileError } = await supabase
+      .from("utilisateur")
+      .select("role, est_banni")
+      .eq("id", data.user.id)
+      .single()
+
+    if (profileError || !profile) {
+      toast.error("Erreur profil", {
+        description: "Impossible de récupérer votre profil. Veuillez réessayer."
+      })
+      await supabase.auth.signOut()
+      setIsLoading(false)
+      return
+    }
+
+    const role = profile.role || "patient"
+
+    // ── Vérifications spécifiques aux agents ──
+    if (role === "agent") {
+      // 1. Vérifier si l'agent est banni
+      if (profile.est_banni === true) {
+        toast.error("Compte suspendu", {
+          description: "Votre compte agent a été banni. Contactez l'administrateur."
+        })
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        return
+      }
+
+      // 2. Vérifier qu'un guichet lui est bien assigné
+      const { data: assignedCounter, error: counterError } = await supabase
+        .from("guichet")
+        .select("id, id_service")
+        .eq("id_agent_actuel", data.user.id)
+        .maybeSingle()
+
+      if (counterError) {
+        toast.error("Erreur", {
+          description: "Impossible de vérifier votre guichet assigné."
+        })
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        return
+      }
+
+      if (!assignedCounter) {
+        toast.error("Aucun guichet assigné", {
+          description: "Vous n'êtes assigné à aucun guichet pour le moment. Contactez l'administrateur."
+        })
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        return
+      }
+
+      // 3. Vérifier que ce guichet est bien rattaché à un service
+      if (!assignedCounter.id_service) {
+        toast.error("Aucun service assigné", {
+          description: "Votre guichet n'est associé à aucun service. Contactez l'administrateur."
+        })
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        return
+      }
+    }
+
+    // Pas de setUser ici : loadUserProfile() (déclenché par onAuthStateChange
+    // dans app-context.tsx) va peupler `user` automatiquement avec les bonnes
+    // données (firstName/name déjà splittés, photo, téléphone, etc.)
+    setIsLoading(false)
+    handleClose()
+    onSuccess()
+    router.push(role === "admin" ? "/admin" : role === "agent" ? "/agent" : "/patient")
+  }
 
   const handleRegister = async (e: React.FormEvent) => {
   e.preventDefault()
