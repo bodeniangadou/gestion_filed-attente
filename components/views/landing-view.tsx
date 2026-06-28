@@ -157,27 +157,28 @@ const { services, takeTicket, currentTicket } = useApp()
     setShowTicketModal(true)
   }
 
-  const handleConfirmTicket = () => {
-    if (!selectedService || !formData.nomComplet || !formData.telephone) return
+ const handleConfirmTicket = async () => {
+  if (!selectedService || !formData.nomComplet || !formData.telephone) return
 
-    const parts = formData.nomComplet.trim().split(" ")
-    const prenom = parts[0] || "Patient"
-    const nom = parts.slice(1).join(" ") || "Anonyme"
+  const parts = formData.nomComplet.trim().split(" ")
+  const prenom = parts[0] || "Patient"
+  const nom = parts.slice(1).join(" ") || "Anonyme"
 
-    const ticket = takeTicket(selectedService, nom, prenom)
+  // On passe le numéro de téléphone ici en 4ème paramètre !
+  const ticket = await takeTicket(selectedService, nom, prenom, formData.telephone)
 
-    if (ticket) {
-      setLocalTicket({
-        number: ticket.number,
-        service: selectedService.name,
-        waitTime: selectedService.waitTime,
-        queuePos: selectedService.currentQueue + 1
-      })
-      setShowTicketModal(false)
-      setShowSuccessModal(true)
-      setFormData({ nomComplet: "", telephone: "" })
-    }
+  if (ticket) {
+    setLocalTicket({
+      number: ticket.number,
+      service: selectedService.name,
+      waitTime: selectedService.waitTime,
+      queuePos: selectedService.currentQueue + 1
+    })
+    setShowTicketModal(false)
+    setShowSuccessModal(true)
+    setFormData({ nomComplet: "", telephone: "" })
   }
+}
 
   const handleCloseTicketModal = (open: boolean) => {
     if (!open) {

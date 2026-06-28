@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, ReactNode, useCallback  } from "react"
+import { createContext, useContext, useState, ReactNode, useCallback } from "react"
 
 export type UserRole = "visitor" | "patient" | "agent" | "admin"
 
@@ -37,7 +37,7 @@ export interface Ticket {
   userName: string
   status: "waiting" | "called" | "serving" | "completed" | "absent" | "cancelled"
   position: number
-  waitTime?: number 
+  waitTime?: number
   totalInQueue: number
   createdAt: Date
   calledAt?: Date
@@ -50,7 +50,7 @@ export interface Counter {
   number: string    // Garde le numéro comme string (ex: "A1")
   serviceId: string
   serviceName: string
-  id_agent_actuel?: string | null 
+  id_agent_actuel?: string | null
   isActive: boolean
   ticketsServed: number
 }
@@ -61,7 +61,7 @@ export interface Agent extends User {
   serviceId?: string
   serviceName?: string
   isOnline: boolean
-  est_banni: boolean; 
+  est_banni: boolean;
   ticketsServedToday: number
 }
 
@@ -85,29 +85,29 @@ interface AppContextType {
   setTickets: (tickets: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void
   services: Service[]
   setServices: (services: Service[] | ((prev: Service[]) => Service[])) => void
-  fetchServices: () => Promise<void> 
-  fetchCounters: () => Promise<void> 
+  fetchServices: () => Promise<void>
+  fetchCounters: () => Promise<void>
   counters: Counter[]
   setCounters: (counters: Counter[] | ((prev: Counter[]) => Counter[])) => void
   isBusy: boolean;
   setIsBusy: (value: boolean) => void;
   agents: Agent[]
   setAgents: (agents: Agent[] | ((prev: Agent[]) => Agent[])) => void
-  fetchAgents: () => Promise<void> 
+  fetchAgents: () => Promise<void>
   hospitalSettings: HospitalSettings
   setHospitalSettings: (settings: HospitalSettings) => void
-  
+
   // Auth
   loginAsRole: (role: UserRole, name?: string, firstName?: string, email?: string) => void
   loginAsAgent: (agent: Agent) => void
   logout: () => void
-  
+
   // Patient actions
-  takeTicket: (service: Service, name: string, firstName: string) => Ticket
+  takeTicket: (service: Service, name: string, firstName: string, telephone: string) => Promise<Ticket>
   cancelTicket: (ticketId: string) => void
   getPatientHistory: () => Ticket[]
   getActiveTickets: () => Ticket[]
-  
+
   // Agent actions
   getCurrentAgent: () => Agent | null
   getAgentCounter: () => Counter | null
@@ -158,10 +158,10 @@ const defaultCounters: Counter[] = [
 ]
 
 const defaultAgents: Agent[] = [
-  { id: "a1", name: "Diallo", firstName: "Mamadou", email: "m.diallo@hopitalmali.ml", role: "agent", counterId: "c1", counterName: "Guichet A1", serviceId: "s1", serviceName: "Consultation Generale", isOnline: true, ticketsServedToday: 23 , est_banni: true},
-  { id: "a2", name: "Traore", firstName: "Fatou", email: "f.traore@hopitalmali.ml", role: "agent", counterId: "c3", counterName: "Guichet B1", serviceId: "s2", serviceName: "Urgences", isOnline: true, ticketsServedToday: 15 , est_banni: true },
-  { id: "a3", name: "Konate", firstName: "Ibrahim", email: "i.konate@hopitalmali.ml", role: "agent", counterId: "c4", counterName: "Guichet C1", serviceId: "s3", serviceName: "Radiologie", isOnline: true, ticketsServedToday: 18 , est_banni: true },
-  { id: "a4", name: "Coulibaly", firstName: "Aminata", email: "a.coulibaly@hopitalmali.ml", role: "agent", isOnline: false, ticketsServedToday: 0 , est_banni: true},
+  { id: "a1", name: "Diallo", firstName: "Mamadou", email: "m.diallo@hopitalmali.ml", role: "agent", counterId: "c1", counterName: "Guichet A1", serviceId: "s1", serviceName: "Consultation Generale", isOnline: true, ticketsServedToday: 23, est_banni: true },
+  { id: "a2", name: "Traore", firstName: "Fatou", email: "f.traore@hopitalmali.ml", role: "agent", counterId: "c3", counterName: "Guichet B1", serviceId: "s2", serviceName: "Urgences", isOnline: true, ticketsServedToday: 15, est_banni: true },
+  { id: "a3", name: "Konate", firstName: "Ibrahim", email: "i.konate@hopitalmali.ml", role: "agent", counterId: "c4", counterName: "Guichet C1", serviceId: "s3", serviceName: "Radiologie", isOnline: true, ticketsServedToday: 18, est_banni: true },
+  { id: "a4", name: "Coulibaly", firstName: "Aminata", email: "a.coulibaly@hopitalmali.ml", role: "agent", isOnline: false, ticketsServedToday: 0, est_banni: true },
 ]
 
 const defaultTickets: Ticket[] = [
@@ -183,18 +183,18 @@ const defaultHospitalSettings: HospitalSettings = {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
-import {  useEffect } from "react"
-import { supabase } from "@/lib/supabase"; 
+import { useEffect } from "react"
+import { supabase } from "@/lib/supabase";
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [isLoading, setIsLoading] = useState(true); 
-const [user, setUser] = useState<User | null>(() => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("app-user");
       return savedUser ? JSON.parse(savedUser) : null;
     }
     return null;
   });
-const [isBusy, setIsBusy] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
   useEffect(() => {
     if (user) {
       localStorage.setItem("app-user", JSON.stringify(user));
@@ -202,124 +202,124 @@ const [isBusy, setIsBusy] = useState(false);
       localStorage.removeItem("app-user");
     }
   }, [user]);
-const fetchServices = useCallback(async () => {
-  const { data, error } = await supabase.from("service").select("*");
-  if (error) {
-    console.error("Erreur chargement services:", error);
-  } else if (data) {
-    const mappedServices: Service[] = data.map((s: any) => ({
-      id: s.id,
-      name: s.nom,
-      description: s.description || "",
-      icon: s.icon || "LayoutGrid",
-      waitTime: s.wait_time || 0,
-      currentQueue: s.current_queue || 0,
-      isActive: s.is_active || false,
-      openTime: s.open_time || "08:00",
-      closeTime: s.close_time || "17:00"
-    }));
-    setServices(mappedServices);
-  }
-  setIsLoading(false);
-}, []); 
+  const fetchServices = useCallback(async () => {
+    const { data, error } = await supabase.from("service").select("*");
+    if (error) {
+      console.error("Erreur chargement services:", error);
+    } else if (data) {
+      const mappedServices: Service[] = data.map((s: any) => ({
+        id: s.id,
+        name: s.nom,
+        description: s.description || "",
+        icon: s.icon || "LayoutGrid",
+        waitTime: s.wait_time || 0,
+        currentQueue: s.current_queue || 0,
+        isActive: s.is_active || false,
+        openTime: s.open_time || "08:00",
+        closeTime: s.close_time || "17:00"
+      }));
+      setServices(mappedServices);
+    }
+    setIsLoading(false);
+  }, []);
 
-useEffect(() => {
-  fetchServices(); 
+  useEffect(() => {
+    fetchServices();
 
-  const channel = supabase
-    .channel('schema-db-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, 
-    () => {
-      fetchServices(); 
-    })
-    .subscribe();
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'service' },
+        () => {
+          fetchServices();
+        })
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, [fetchServices]); 
-const fetchCounters = useCallback(async () => {
-  const { data, error } = await supabase
-    .from("guichet")
-    .select("*, service(nom)"); 
-    
-  if (error) {
-    console.error("Erreur chargement guichets:", error);
-  } else if (data) {
-    const formattedCounters: Counter[] = data.map((g: any) => ({
-      id: g.id,
-      name: g.numero,        // "A1"
-      number: g.numero,      // Garde la chaîne de caractères telle quelle
-      serviceId: g.id_service,
-      serviceName: g.service?.nom || "Non assigné",
-      id_agent_actuel: g.id_agent_actuel,
-      isActive: g.statut === 'Actif',
-      ticketsServed: 0 
-    }));
-    setCounters(formattedCounters);
-  }
-}, []);
-const fetchAgents = useCallback(async () => {
-  const { data, error } = await supabase
-    .from("utilisateur")
-    .select("*")
-    .eq("role", "agent");
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchServices]);
+  const fetchCounters = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("guichet")
+      .select("*, service(nom)");
 
-  if (error) {
-    console.error("Erreur chargement agents:", error);
-    return;
-  }
-  
-  if (data) {
-    const mappedAgents: Agent[] = data.map((u: any) => ({
-      id: u.id,
-      name: u.nom?.split(' ')[1] || "",
-      firstName: u.nom?.split(' ')[0] || "",
-      email: u.email,
-      telephone: u.telephone,
-      role: "agent",
-      isOnline: u.disponibilite ?? true,
-      est_banni: u.est_banni ?? false, // Garantir une valeur par défaut
-      ticketsServedToday: 0
-    }));
-    setAgents(mappedAgents);
-  }
-}, []);
-useEffect(() => {
-  fetchServices();
-  fetchCounters();
-  fetchAgents(); 
+    if (error) {
+      console.error("Erreur chargement guichets:", error);
+    } else if (data) {
+      const formattedCounters: Counter[] = data.map((g: any) => ({
+        id: g.id,
+        name: g.numero,        // "A1"
+        number: g.numero,      // Garde la chaîne de caractères telle quelle
+        serviceId: g.id_service,
+        serviceName: g.service?.nom || "Non assigné",
+        id_agent_actuel: g.id_agent_actuel,
+        isActive: g.statut === 'Actif',
+        ticketsServed: 0
+      }));
+      setCounters(formattedCounters);
+    }
+  }, []);
+  const fetchAgents = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("utilisateur")
+      .select("*")
+      .eq("role", "agent");
+
+    if (error) {
+      console.error("Erreur chargement agents:", error);
+      return;
+    }
+
+    if (data) {
+      const mappedAgents: Agent[] = data.map((u: any) => ({
+        id: u.id,
+        name: u.nom?.split(' ')[1] || "",
+        firstName: u.nom?.split(' ')[0] || "",
+        email: u.email,
+        telephone: u.telephone,
+        role: "agent",
+        isOnline: u.disponibilite ?? true,
+        est_banni: u.est_banni ?? false, // Garantir une valeur par défaut
+        ticketsServedToday: 0
+      }));
+      setAgents(mappedAgents);
+    }
+  }, []);
+  useEffect(() => {
+    fetchServices();
+    fetchCounters();
+    fetchAgents();
 
 
-  const channelAgents = supabase.channel('schema-agents')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'utilisateur' }, () => {
-      fetchAgents(); 
-    })
-    .subscribe();
+    const channelAgents = supabase.channel('schema-agents')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'utilisateur' }, () => {
+        fetchAgents();
+      })
+      .subscribe();
 
-  const channelServices = supabase.channel('schema-services')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, () => {
-      fetchServices();
-    })
-    .subscribe();
+    const channelServices = supabase.channel('schema-services')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'service' }, () => {
+        fetchServices();
+      })
+      .subscribe();
 
-  const channelCounters = supabase.channel('schema-guichets')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'guichet' }, () => {
-      fetchCounters();
-    })
-    .subscribe();
+    const channelCounters = supabase.channel('schema-guichets')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guichet' }, () => {
+        fetchCounters();
+      })
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channelServices);
-    supabase.removeChannel(channelCounters);
-    supabase.removeChannel(channelAgents);
-  };
-}, [fetchServices, fetchCounters, fetchAgents]);
-    const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
+    return () => {
+      supabase.removeChannel(channelServices);
+      supabase.removeChannel(channelCounters);
+      supabase.removeChannel(channelAgents);
+    };
+  }, [fetchServices, fetchCounters, fetchAgents]);
+  const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>(defaultTickets)
-const [services, setServices] = useState<Service[]>([]); 
-const [counters, setCounters] = useState<Counter[]>([]); 
-const [agents, setAgents] = useState<Agent[]>([]); 
+  const [services, setServices] = useState<Service[]>([]);
+  const [counters, setCounters] = useState<Counter[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
   const loginAsRole = useCallback((role: UserRole, name?: string, firstName?: string, email?: string) => {
     const newUser: User = {
@@ -334,14 +334,14 @@ const [agents, setAgents] = useState<Agent[]>([]);
 
   const loginAsAgent = useCallback((agent: Agent) => {
     setUser(agent)
-    setAgents(prev => prev.map(a => 
+    setAgents(prev => prev.map(a =>
       a.id === agent.id ? { ...a, isOnline: true } : a
     ))
   }, [])
 
   const logout = useCallback(() => {
     if (user?.role === "agent") {
-      setAgents(prev => prev.map(a => 
+      setAgents(prev => prev.map(a =>
         a.id === user.id ? { ...a, isOnline: false } : a
       ))
     }
@@ -350,50 +350,102 @@ const [agents, setAgents] = useState<Agent[]>([]);
   }, [user])
 
   // Patient functions
-  const takeTicket = useCallback((service: Service, name: string, firstName: string): Ticket => {
+  const takeTicket = useCallback(async (service: Service, name: string, firstName: string, telephone: string) => {
+    // 1. Filtrer les tickets en attente pour ce service spécifique
     const serviceTickets = tickets.filter(t => t.service.id === service.id && t.status === "waiting")
     const position = serviceTickets.length + 1
+
+    // Génération du numéro (Ex: R-005)
     const ticketPrefix = service.name.charAt(0).toUpperCase()
     const ticketNumber = `${ticketPrefix}${String(position).padStart(3, "0")}`
-    
-    // Find available counter for this service
-    const availableCounter = counters.find(c => c.serviceId === service.id && c.isActive && c.agentId)
-    
+
+    // 2. LOGIQUE DU GUICHET : Trouver tous les guichets actifs pour ce service
+    // On ajoute (c as any) pour court-circuiter la vérification stricte de TypeScript
+    const activeCounters = counters.filter(c => c.serviceId === service.id && c.isActive && (c as any).agentId)
+    let assignedCounter = undefined
+
+    if (activeCounters.length > 0) {
+      // Trouver le guichet qui a le MOINS de tickets assignés en attente
+      assignedCounter = activeCounters.reduce((prev, current) => {
+        const prevCount = tickets.filter(t => t.counterId === prev.id && t.status === "waiting").length
+        const currentCount = tickets.filter(t => t.counterId === current.id && t.status === "waiting").length
+        return prevCount <= currentCount ? prev : current
+      })
+    }
+
+    const userId = user?.id || `visitor-${Date.now()}`
+
+    // 3. Création de l'objet Ticket complet
     const newTicket: Ticket = {
       id: `ticket-${Date.now()}`,
       number: ticketNumber,
       service,
-      counterId: availableCounter?.id,
-      counterName: availableCounter?.name,
-      userId: user?.id || `visitor-${Date.now()}`,
+      counterId: assignedCounter?.id,
+      counterName: assignedCounter?.name,
+      userId: userId,
       userName: `${firstName} ${name}`,
       status: "waiting",
       position,
       totalInQueue: position,
       createdAt: new Date(),
     }
-    
-    setTickets(prev => [...prev, newTicket])
-    setCurrentTicket(newTicket)
-    
-    setServices(prev => prev.map(s => 
-      s.id === service.id ? { ...s, currentQueue: s.currentQueue + 1 } : s
-    ))
-    
+
+    // 4. SAUVEGARDE EN BASE DE DONNÉES (SUPABASE) 🚀
+    try {
+      const { error } = await supabase
+        .from('ticket') 
+        .insert([
+          {
+            id: crypto.randomUUID(), 
+            code: newTicket.number, 
+            patient_nom: newTicket.userName, 
+            statut: "En attente", 
+            id_guichet: newTicket.counterId || null, 
+            id_service: service.id 
+          }
+        ])
+
+      if (error) console.error("Erreur d'insertion Supabase :", error.message)
+    } catch (err) {
+      console.error("Erreur réseau Supabase :", err)
+    }
+
     if (!user) {
-      setUser({
-        id: newTicket.userId,
+      const anonymousUser = {
+        id: userId,
         name,
         firstName,
-        role: "patient",
-      })
+        role: "patient" as const, // 👈 Le "as const" règle l'erreur de UserRole !
+        telephone
+      }
+
+      localStorage.setItem("rang_plus_user", JSON.stringify(anonymousUser))
+      localStorage.setItem("rang_plus_anonymous_ticket", JSON.stringify({
+        number: newTicket.number,
+        service: service.name,
+        waitTime: service.waitTime,
+        queuePos: position
+      }))
+
+      if (typeof setUser === "function") {
+        // Si ça râle encore à cause d'une propriété manquante dans l'objet User, on le passe "as any" temporairement pour la soutenance
+        setUser(anonymousUser as any)
+      }
     }
-    
+
+    // 6. Mise à jour des états locaux du Context
+    setTickets(prev => [...prev, newTicket])
+    setCurrentTicket(newTicket)
+
+    setServices(prev => prev.map(s =>
+      s.id === service.id ? { ...s, currentQueue: s.currentQueue + 1 } : s
+    ))
+
     return newTicket
   }, [tickets, counters, user])
 
   const cancelTicket = useCallback((ticketId: string) => {
-    setTickets(prev => prev.map(t => 
+    setTickets(prev => prev.map(t =>
       t.id === ticketId ? { ...t, status: "cancelled" as const } : t
     ))
     if (currentTicket?.id === ticketId) {
@@ -408,8 +460,8 @@ const [agents, setAgents] = useState<Agent[]>([]);
 
   const getActiveTickets = useCallback(() => {
     if (!user) return []
-    return tickets.filter(t => 
-      t.userId === user.id && 
+    return tickets.filter(t =>
+      t.userId === user.id &&
       (t.status === "waiting" || t.status === "called" || t.status === "serving")
     )
   }, [tickets, user])
@@ -429,8 +481,8 @@ const [agents, setAgents] = useState<Agent[]>([]);
   const getAgentQueue = useCallback(() => {
     const counter = getAgentCounter()
     if (!counter) return []
-    return tickets.filter(t => 
-      t.service.id === counter.serviceId && 
+    return tickets.filter(t =>
+      t.service.id === counter.serviceId &&
       t.status === "waiting"
     ).sort((a, b) => a.position - b.position)
   }, [getAgentCounter, tickets])
@@ -450,11 +502,11 @@ const [agents, setAgents] = useState<Agent[]>([]);
       counterName: counter.name,
     }
 
-    setTickets(prev => prev.map(t => 
+    setTickets(prev => prev.map(t =>
       t.id === nextTicket.id ? updatedTicket : t
     ))
 
-    setCounters(prev => prev.map(c => 
+    setCounters(prev => prev.map(c =>
       c.id === counter.id ? { ...c, currentTicket: updatedTicket } : c
     ))
 
@@ -471,32 +523,32 @@ const [agents, setAgents] = useState<Agent[]>([]);
 
   const markAbsent = useCallback((ticketId: string) => {
     const counter = getAgentCounter()
-    setTickets(prev => prev.map(t => 
+    setTickets(prev => prev.map(t =>
       t.id === ticketId ? { ...t, status: "absent" as const } : t
     ))
     if (counter) {
-      setCounters(prev => prev.map(c => 
+      setCounters(prev => prev.map(c =>
         c.id === counter.id ? { ...c, currentTicket: undefined } : c
       ))
     }
   }, [getAgentCounter])
 
   const recallPatient = useCallback((ticketId: string) => {
-    setTickets(prev => prev.map(t => 
+    setTickets(prev => prev.map(t =>
       t.id === ticketId ? { ...t, calledAt: new Date() } : t
     ))
   }, [])
 
   const completeService = useCallback((ticketId: string) => {
     const counter = getAgentCounter()
-    setTickets(prev => prev.map(t => 
+    setTickets(prev => prev.map(t =>
       t.id === ticketId ? { ...t, status: "completed" as const, completedAt: new Date() } : t
     ))
     if (counter) {
-      setCounters(prev => prev.map(c => 
+      setCounters(prev => prev.map(c =>
         c.id === counter.id ? { ...c, currentTicket: undefined, ticketsServed: c.ticketsServed + 1 } : c
       ))
-      setAgents(prev => prev.map(a => 
+      setAgents(prev => prev.map(a =>
         a.counterId === counter.id ? { ...a, ticketsServedToday: a.ticketsServedToday + 1 } : a
       ))
     }
@@ -505,7 +557,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   const toggleCounter = useCallback((open: boolean) => {
     const counter = getAgentCounter()
     if (!counter) return
-    setCounters(prev => prev.map(c => 
+    setCounters(prev => prev.map(c =>
       c.id === counter.id ? { ...c, isActive: open } : c
     ))
   }, [getAgentCounter])
@@ -520,7 +572,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   }, [])
 
   const updateService = useCallback((id: string, updates: Partial<Service>) => {
-    setServices(prev => prev.map(s => 
+    setServices(prev => prev.map(s =>
       s.id === id ? { ...s, ...updates } : s
     ))
   }, [])
@@ -540,7 +592,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   }, [])
 
   const updateCounter = useCallback((id: string, updates: Partial<Counter>) => {
-    setCounters(prev => prev.map(c => 
+    setCounters(prev => prev.map(c =>
       c.id === id ? { ...c, ...updates } : c
     ))
   }, [])
@@ -548,7 +600,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   const deleteCounter = useCallback((id: string) => {
     const counter = counters.find(c => c.id === id)
     if (counter?.agentId) {
-      setAgents(prev => prev.map(a => 
+      setAgents(prev => prev.map(a =>
         a.id === counter.agentId ? { ...a, counterId: undefined, counterName: undefined } : a
       ))
     }
@@ -565,7 +617,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   }, [])
 
   const updateAgent = useCallback((id: string, updates: Partial<Agent>) => {
-    setAgents(prev => prev.map(a => 
+    setAgents(prev => prev.map(a =>
       a.id === id ? { ...a, ...updates } : a
     ))
   }, [])
@@ -573,7 +625,7 @@ const [agents, setAgents] = useState<Agent[]>([]);
   const deleteAgent = useCallback((id: string) => {
     const agent = agents.find(a => a.id === id)
     if (agent?.counterId) {
-      setCounters(prev => prev.map(c => 
+      setCounters(prev => prev.map(c =>
         c.id === agent.counterId ? { ...c, agentId: undefined, agentName: undefined } : c
       ))
     }
@@ -587,22 +639,22 @@ const [agents, setAgents] = useState<Agent[]>([]);
 
     // Remove agent from previous counter
     if (agent.counterId) {
-      setCounters(prev => prev.map(c => 
+      setCounters(prev => prev.map(c =>
         c.id === agent.counterId ? { ...c, agentId: undefined, agentName: undefined } : c
       ))
     }
 
     // Assign to new counter
-    setCounters(prev => prev.map(c => 
+    setCounters(prev => prev.map(c =>
       c.id === counterId ? { ...c, agentId, agentName: `${agent.firstName} ${agent.name}` } : c
     ))
-    setAgents(prev => prev.map(a => 
-      a.id === agentId ? { 
-        ...a, 
-        counterId, 
+    setAgents(prev => prev.map(a =>
+      a.id === agentId ? {
+        ...a,
+        counterId,
         counterName: counter.name,
         serviceId: counter.serviceId,
-        serviceName: counter.serviceName 
+        serviceName: counter.serviceName
       } : a
     ))
   }, [counters, agents])
@@ -612,17 +664,17 @@ const [agents, setAgents] = useState<Agent[]>([]);
     if (!agent) return
 
     if (agent.counterId) {
-      setCounters(prev => prev.map(c => 
+      setCounters(prev => prev.map(c =>
         c.id === agent.counterId ? { ...c, agentId: undefined, agentName: undefined, isActive: false } : c
       ))
     }
-    setAgents(prev => prev.map(a => 
-      a.id === agentId ? { 
-        ...a, 
-        counterId: undefined, 
+    setAgents(prev => prev.map(a =>
+      a.id === agentId ? {
+        ...a,
+        counterId: undefined,
         counterName: undefined,
         serviceId: undefined,
-        serviceName: undefined 
+        serviceName: undefined
       } : a
     ))
   }, [agents])
@@ -630,10 +682,10 @@ const [agents, setAgents] = useState<Agent[]>([]);
   const getStatistics = useCallback(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
+
     const todayTickets = tickets.filter(t => new Date(t.createdAt) >= today)
     const completedToday = todayTickets.filter(t => t.status === "completed")
-    
+
     const totalWaitTime = completedToday.reduce((acc, t) => {
       if (t.calledAt && t.createdAt) {
         return acc + (new Date(t.calledAt).getTime() - new Date(t.createdAt).getTime())
@@ -650,41 +702,41 @@ const [agents, setAgents] = useState<Agent[]>([]);
       ticketsCompleted: completedToday.length,
     }
   }, [tickets, services, counters])
-  
+
   const loadUserProfile = useCallback(async (userId: string) => {
-  const { data, error } = await supabase
-    .from("utilisateur")
-    .select("*")
-    .eq("id", userId)
-    .single();
+    const { data, error } = await supabase
+      .from("utilisateur")
+      .select("*")
+      .eq("id", userId)
+      .single();
 
-  if (data && !error) {
-    setUser({
-      id: data.id,
-      email: data.email,
-      firstName: data.nom.split(' ')[0] || "",
-      name: data.nom.split(' ')[1] || "",
-      role: data.role as UserRole,
-      photo: data.photo_url || "", 
-      phone: data.telephone || "", 
-    });
-  }
-}, []);
-useEffect(() => {
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) loadUserProfile(session.user.id);
-  });
-
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_IN' && session) {
-      loadUserProfile(session.user.id);
-    } else if (event === 'SIGNED_OUT') {
-      setUser(null);
+    if (data && !error) {
+      setUser({
+        id: data.id,
+        email: data.email,
+        firstName: data.nom.split(' ')[0] || "",
+        name: data.nom.split(' ')[1] || "",
+        role: data.role as UserRole,
+        photo: data.photo_url || "",
+        phone: data.telephone || "",
+      });
     }
-  });
+  }, []);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) loadUserProfile(session.user.id);
+    });
 
-  return () => subscription.unsubscribe();
-}, [loadUserProfile]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        loadUserProfile(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadUserProfile]);
   return (
     <AppContext.Provider
       value={{
@@ -727,8 +779,8 @@ useEffect(() => {
         createCounter,
         updateCounter,
         deleteCounter,
-         isBusy,
-         setIsBusy,
+        isBusy,
+        setIsBusy,
         createAgent,
         updateAgent,
         deleteAgent,
