@@ -40,7 +40,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import { useApp, Service, Counter } from "@/lib/app-context"
+import { useApp, Service, Counter, Ticket } from "@/lib/app-context"
 import { TicketTrackingModal } from "./TicketTrackingModal"
 
 interface LandingViewProps {
@@ -119,23 +119,41 @@ const checkServiceStatus = (service: Service, counters: Counter[]) => {
   return isTimeValid && hasActiveCounter
 }
 
-// Génère un code ticket unique, même format que ServicesView (cohérence dans toute l'app)
-function generateUniqueTicketCode(serviceName: string): string {
-  const firstLetter = serviceName
+// CORRIGÉ : préfixe sur 2 lettres (au lieu d'1 seule) pour éviter que deux services
+// dont le nom commence par la même lettre génèrent le même code (ex: "Pédiatrie" et
+// "Pharmacie" donnaient toutes les deux "P..."). Le numéro séquentiel est désormais
+// basé sur le nombre TOTAL de tickets jamais créés pour ce service (tous statuts
+// confondus), et non plus seulement les tickets "en attente" — qui retombait à 0/1
+// dès que la file se vidait, provoquant la réutilisation du même numéro dans le temps.
+function getServicePrefix(serviceName: string): string {
+  const cleaned = serviceName
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .substring(0, 1)
     .toUpperCase()
+  const lettersOnly = cleaned.replace(/[^A-Z]/g, "")
+  return lettersOnly.substring(0, 1) || "XX"
+}
 
-  const num1 = Math.floor(10 + Math.random() * 90)
-  const num2 = Math.floor(10 + Math.random() * 90)
-
-  return `${firstLetter}-${num1}-${num2}`
+function generateUniqueTicketCode(serviceName: string, sequenceNumber: number): string {
+  const prefix = getServicePrefix(serviceName)
+  return `${prefix}${String(sequenceNumber).padStart(3, "0")}`
 }
 
 const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?: string }; statut: string }[]) => {
   return allTickets.filter(t => t.service?.id === serviceId && t.statut === "waiting").length
 }
+
+// Compte tous les tickets jamais créés pour un service (toutes statuts), utilisé
+// uniquement pour générer un numéro qui ne se répète jamais — différent du rang
+// affiché au patient (queuePos), qui lui reste basé sur la file d'attente actuelle.
+const countAllTicketsForService = (serviceId: string, allTickets: { service?: { id?: string } }[]) => {
+  return allTickets.filter(t => t.service?.id === serviceId).length
+}
+
+// Même règle de validation que LoginModal : exactement 8 chiffres, cohérent dans toute l'app
+const isValidPhone = (phone: string) => /^\d{8}$/.test(phone.trim())
+
+const ACTIVE_STATUSES = ["waiting", "called", "serving"]
 
 export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
   const { services, counters, tickets, fetchTickets } = useApp()
@@ -147,66 +165,110 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
+  const [phoneError, setPhoneError] = useState<string | null>(null)
 
-  // Ticket anonyme suivi via son ID réel en BDD (pas via user/currentTicket,
-  // puisque la landing page sert des visiteurs sans compte connecté)
-  const [trackedTicketId, setTrackedTicketId] = useState<string | null>(null)
+  // Liste d'identifiants de tickets suivis (plusieurs services différents possibles
+  // en parallèle), au lieu d'un seul ID
+  const [trackedTicketIds, setTrackedTicketIds] = useState<string[]>([])
 
+  // Ticket actuellement affiché dans le modal de suivi (permet de naviguer
+  // entre plusieurs tickets actifs si la personne en a plus d'un)
+  const [activeModalTicketId, setActiveModalTicketId] = useState<string | null>(null)
+
+  // CORRIGÉ : évite le bug "section blanche mais cliquable" lié à l'hydratation
+  // Next.js + Framer Motion. Les animations d'entrée ne démarrent qu'une fois le
+  // composant réellement monté côté client.
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  // Récupère l'ID du ticket anonyme suivi depuis le localStorage au montage
+  // Récupère la liste des tickets anonymes suivis depuis le localStorage au montage
   useEffect(() => {
-    const savedId = localStorage.getItem("rang_plus_anonymous_ticket_id")
-    if (savedId) {
-      setTrackedTicketId(savedId)
+    const saved = localStorage.getItem("rang_plus_anonymous_ticket_ids")
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) setTrackedTicketIds(parsed)
+      } catch {
+        // ancien format (un seul id en string) — on migre proprement
+        if (typeof saved === "string" && saved.length > 0) {
+          setTrackedTicketIds([saved])
+        }
+      }
     }
   }, [])
 
   useEffect(() => {
-    if (trackedTicketId) {
-      localStorage.setItem("rang_plus_anonymous_ticket_id", trackedTicketId)
+    if (trackedTicketIds.length > 0) {
+      localStorage.setItem("rang_plus_anonymous_ticket_ids", JSON.stringify(trackedTicketIds))
     } else {
-      localStorage.removeItem("rang_plus_anonymous_ticket_id")
+      localStorage.removeItem("rang_plus_anonymous_ticket_ids")
     }
-  }, [trackedTicketId])
+  }, [trackedTicketIds])
 
-  // Ticket suivi = celui dont l'id correspond, retrouvé dans la liste temps réel
-  // du context (`tickets` est rechargé par le canal Realtime sur la table "ticket").
-  // Si le ticket n'est plus actif (terminé/annulé/absent), on arrête de le suivre.
-  const trackedTicket = useMemo(() => {
-    if (!trackedTicketId) return null
-    const found = tickets.find(t => t.id === trackedTicketId)
-    if (!found) return null
-    if (!["waiting", "called", "serving"].includes(found.statut)) return null
-    return found
-  }, [trackedTicketId, tickets])
+  // Liste des tickets suivis qui sont encore réellement actifs en base (le canal
+  // Realtime de `tickets` garde tout ça à jour automatiquement)
+  const trackedActiveTickets: Ticket[] = useMemo(() => {
+    return trackedTicketIds
+      .map(id => tickets.find(t => t.id === id))
+      .filter((t): t is Ticket => !!t && ACTIVE_STATUSES.includes(t.statut))
+  }, [trackedTicketIds, tickets])
 
-  // Objet compatible avec ce que LandingView affichait avant (number/service/waitTime/queuePos)
-  const generatedTicket = trackedTicket
+  // Nettoyage automatique : si un ticket suivi a disparu de la liste active
+  // (terminé / annulé / absent), on arrête de le suivre
+  useEffect(() => {
+    const stillActiveIds = trackedActiveTickets.map(t => t.id)
+    const hasStaleIds = trackedTicketIds.some(id => !stillActiveIds.includes(id))
+    if (hasStaleIds) {
+      setTrackedTicketIds(stillActiveIds)
+    }
+  }, [trackedActiveTickets, trackedTicketIds])
+
+  // Le ticket le plus urgent à afficher en priorité : appelé/en cours d'abord,
+  // sinon le plus ancien en attente
+  const mostUrgentTicket: Ticket | null = useMemo(() => {
+    if (trackedActiveTickets.length === 0) return null
+
+    const calledOrServing = trackedActiveTickets.filter(t => t.statut === "called" || t.statut === "serving")
+    if (calledOrServing.length > 0) {
+      return calledOrServing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0]
+    }
+
+    return [...trackedActiveTickets].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    )[0]
+  }, [trackedActiveTickets])
+
+  // Ticket actuellement choisi pour le modal : celui explicitement sélectionné par
+  // la personne (navigation), ou par défaut le plus urgent
+  const ticketShownInModal: Ticket | null = useMemo(() => {
+    if (activeModalTicketId) {
+      const found = trackedActiveTickets.find(t => t.id === activeModalTicketId)
+      if (found) return found
+    }
+    return mostUrgentTicket
+  }, [activeModalTicketId, trackedActiveTickets, mostUrgentTicket])
+
+  // Objet compatible avec ce que le modal de suivi attend
+  const generatedTicket = ticketShownInModal
     ? {
-        id: trackedTicket.id,
-        number: trackedTicket.number,
-        service: trackedTicket.service?.name || "",
-        waitTime: Math.max(5, (trackedTicket.position || 1) * 5),
-        queuePos: trackedTicket.position,
-        statut: trackedTicket.statut,
-        counterName: trackedTicket.counterName,
-        phoneNumber: trackedTicket.phone,
+        id: ticketShownInModal.id,
+        number: ticketShownInModal.number,
+        service: ticketShownInModal.service?.name || "",
+        waitTime: Math.max(5, (ticketShownInModal.position || 1) * 5),
+        queuePos: ticketShownInModal.position,
+        totalInQueue: ticketShownInModal.totalInQueue,
+        statut: ticketShownInModal.statut,
+        isYourTurn: ticketShownInModal.statut === "called" || ticketShownInModal.statut === "serving",
+        counterName: ticketShownInModal.counterName,
+        phoneNumber: ticketShownInModal.phone,
       }
     : null
-
-  // Si le ticket suivi disparaît de la liste (terminé/annulé), on nettoie le suivi local
-  useEffect(() => {
-    if (trackedTicketId && !trackedTicket) {
-      setTrackedTicketId(null)
-    }
-  }, [trackedTicketId, trackedTicket])
 
   const totalWaiting = tickets.filter(t => t.statut === "waiting").length
 
@@ -217,19 +279,27 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     }))
   }, [services, counters])
 
+  // Le visiteur a-t-il déjà un ticket actif sur ce service précis ?
+  const hasActiveTicketForService = (serviceId: string) => {
+    return trackedActiveTickets.some(t => t.service?.id === serviceId)
+  }
+
   const handleOpenTicketModal = (service: Service) => {
     if (!service.isActive) return
+
+    if (hasActiveTicketForService(service.id)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${service.name}.`
+      })
+      return
+    }
+
     setSelectedService(service)
     setShowTicketModal(true)
   }
 
-  // CORRIGÉ : Ouverture automatique du modal via ?service=xxx dans l'URL (venant du
-  // scan d'un QR code, soit directement, soit via la redirection de /scanner/[serviceId]).
-  // On vérifie désormais le statut RÉEL et dynamique du service (horaires + guichet actif
-  // disponible, via servicesWithStatus) plutôt que le simple champ `isActive` statique de
-  // la base — pour rester cohérent avec ce qui est affiché ailleurs sur la page : un
-  // service marqué actif en base mais hors horaires ou sans guichet ne doit pas ouvrir
-  // le formulaire de prise de ticket.
+  // Ouverture automatique du modal via ?service=xxx dans l'URL (venant du scan d'un QR
+  // code, soit directement, soit via la redirection de /scanner/[serviceId]).
   useEffect(() => {
     if (services.length === 0 || selectedService) return
 
@@ -242,16 +312,21 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
     const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
 
-    if (isReallyActive) {
-      handleOpenTicketModal(serviceToSelect)
-    } else {
+    if (!isReallyActive) {
       toast.error("Service indisponible", {
         description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
       })
+    } else if (hasActiveTicketForService(serviceId)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
+      })
+    } else {
+      handleOpenTicketModal(serviceToSelect)
     }
 
     window.history.replaceState({}, document.title, window.location.pathname)
-  }, [services, servicesWithStatus, selectedService])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, servicesWithStatus, selectedService, trackedActiveTickets])
 
   const activeServices = services.filter(s => s.isActive)
   const avgWaitTime = activeServices.length > 0
@@ -268,10 +343,31 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     s.description.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  // Vérification anti-doublon en BDD (nom ET téléphone) avant insertion réelle
-  // dans Supabase + resynchronisation, exactement comme ServicesView.
+  const handlePhoneChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, "")
+    setFormData({ ...formData, telephone: digitsOnly })
+    setPhoneError(null)
+  }
+
+  // Vérification anti-doublon en BDD (nom ET téléphone, plus le blocage visuel déjà
+  // fait sur ce même service) avant insertion réelle dans Supabase + resynchronisation.
   const handleConfirmTicket = async () => {
     if (!selectedService || !formData.nomComplet || !formData.telephone || isSubmitting) return
+
+    if (!isValidPhone(formData.telephone)) {
+      setPhoneError("Le numéro doit contenir exactement 8 chiffres.")
+      return
+    }
+
+    // Double sécurité : revérifie juste avant l'envoi, au cas où un ticket aurait été
+    // pris entre l'ouverture du formulaire et la confirmation (autre onglet, etc.)
+    if (hasActiveTicketForService(selectedService.id)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${selectedService.name}.`
+      })
+      setShowTicketModal(false)
+      return
+    }
 
     setIsSubmitting(true)
 
@@ -337,7 +433,13 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         }
       })
 
-      const ticketNumber = generateUniqueTicketCode(selectedService.name)
+      // Rang réel dans la file (affiché au patient) — distinct du numéro de séquence
+      const currentPosition = calculateQueuePosition(selectedService.id, tickets) + 1
+
+      // CORRIGÉ : numéro de ticket basé sur le total de tickets jamais créés pour ce
+      // service (toujours croissant, jamais réutilisé), avec un préfixe à 2 lettres
+      const sequenceNumber = countAllTicketsForService(selectedService.id, tickets) + 1
+      const ticketNumber = generateUniqueTicketCode(selectedService.name, sequenceNumber)
 
       const { data, error } = await supabase
         .from("ticket")
@@ -360,8 +462,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       // Resynchronisation immédiate du state global temps réel
       await fetchTickets()
 
-      // On suit ce ticket par son vrai ID BDD désormais
-      setTrackedTicketId(data.id)
+      // On ajoute ce nouveau ticket à la liste suivie (sans perdre les précédents)
+      setTrackedTicketIds(prev => Array.from(new Set([...prev, data.id])))
+      setLastCreatedTicketId(data.id)
 
       setShowTicketModal(false)
       setShowSuccessModal(true)
@@ -369,7 +472,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       toast.success("Ticket créé avec succès !")
 
     } catch (err) {
-      console.error(err)
+      console.error("Erreur création ticket:", err)
       toast.error("Erreur", { description: "Impossible d'enregistrer votre ticket. Veuillez réessayer." })
     } finally {
       setIsSubmitting(false)
@@ -380,19 +483,21 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     if (!open) {
       setShowTicketModal(false)
       setFormData({ nomComplet: "", telephone: "" })
+      setPhoneError(null)
     } else {
       setShowTicketModal(true)
     }
   }
 
-  // Annulation réelle en BDD du ticket suivi
+  // Annulation réelle en BDD du ticket actuellement affiché dans le modal de suivi
   const handleCancelTrackedTicket = async () => {
-    if (!trackedTicketId) return
+    if (!ticketShownInModal) return
+    const idToCancel = ticketShownInModal.id
     try {
       const { error } = await supabase
         .from("ticket")
         .update({ statut: "cancelled" })
-        .eq("id", trackedTicketId)
+        .eq("id", idToCancel)
 
       if (error) throw error
 
@@ -402,9 +507,19 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       console.error(err)
       toast.error("Erreur", { description: "Impossible d'annuler le ticket." })
     } finally {
-      setTrackedTicketId(null)
-      setShowTrackingModal(false)
+      setTrackedTicketIds(prev => prev.filter(id => id !== idToCancel))
+      setActiveModalTicketId(null)
+      // On ne ferme le modal que s'il ne reste plus aucun ticket actif à afficher
+      if (trackedActiveTickets.length <= 1) {
+        setShowTrackingModal(false)
+      }
     }
+  }
+
+  // Ouverture du modal sur le ticket le plus urgent (bouton flottant / nav)
+  const openTrackingModal = () => {
+    setActiveModalTicketId(mostUrgentTicket?.id || null)
+    setShowTrackingModal(true)
   }
 
   const containerVariants = {
@@ -447,11 +562,12 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
             {generatedTicket ? (
               <button
-                onClick={() => setShowTrackingModal(true)}
+                onClick={openTrackingModal}
                 className="text-sm font-semibold text-primary animate-pulse flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors"
               >
                 <RefreshCw className="size-3.5 animate-spin text-primary" />
-                Suivre mon ticket ({generatedTicket.number})
+                Suivre mon ticket ({generatedTicket.number}
+                {trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""})
               </button>
             ) : (
               <button
@@ -498,11 +614,11 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             className="md:hidden border-t border-border bg-background"
           >
             <div className="flex flex-col p-4 gap-2">
-              <a
-                href="#services-section"
+              
+               <a href="#services-section"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
-          >
+              >
                 <Stethoscope className="size-5 text-primary" />
                 Services
               </a>
@@ -661,7 +777,12 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       {/* SERVICES SECTION */}
       <section id="services-section" className="px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-4xl">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
+          <motion.div
+            initial={isMounted ? { opacity: 0, y: 20 } : false}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-10"
+          >
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Nos Services Médicaux</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
               Recherchez ou scanner le service dont vous avez besoin pour prendre votre ticket immédiatement.
@@ -669,82 +790,97 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           </motion.div>
 
           <div className="relative mb-8">
-  {/* Icône de recherche à gauche */}
-  <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-  
-  <Input
-    placeholder="Rechercher un service..."
-    value={searchQuery}
-    onChange={(e) => setSearchQuery(e.target.value)}
-    /* On change 'pr-4' en 'pr-14' pour laisser la place à l'icône de droite */
-    className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
-  />
+            {/* Icône de recherche à gauche */}
+            <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
 
-  {/* Icône de scan à droite */}
-  <button 
-    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-    onClick={onScanQR}
-  >
-    <QrCode className="size-6" />
-  </button>
-</div>
+            <Input
+              placeholder="Rechercher un service..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
+            />
 
-          <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {/* Icône de scan à droite */}
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+              onClick={onScanQR}
+            >
+              <QrCode className="size-6" />
+            </button>
+          </div>
+
+          {/* CORRIGÉ : initial conditionné par isMounted, comme pour le Hero — évite que
+              cette grille reste invisible (opacity:0) à cause d'un souci d'hydratation
+              alors que les cartes existent déjà dans le DOM et restent cliquables */}
+          <motion.div
+            variants={containerVariants}
+            initial={isMounted ? "hidden" : false}
+            whileInView="visible"
+            viewport={{ once: true }}
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
             {filteredServices
               .map((service) => ({
                 ...service,
                 isActive: servicesWithStatus.find(s => s.id === service.id)?.isActive ?? service.isActive
               }))
               .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
-              .map((service) => (
-                <motion.div key={service.id} variants={itemVariants}>
-                  <Card
-                    className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive
-                        ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
-                        : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
-                      }`}
-                    onClick={() => handleOpenTicketModal(service)}
-                  >
-                    <CardContent className="p-5 flex flex-col h-full justify-between">
-                      <div>
-                        <div className="flex items-start justify-between mb-3">
-                          <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive
-                              ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
-                              : "bg-muted text-muted-foreground"
-                            }`}>
-                            <DynamicIcon name={service.icon} className="size-5" />
+              .map((service) => {
+                const hasTicketHere = hasActiveTicketForService(service.id)
+                return (
+                  <motion.div key={service.id} variants={itemVariants}>
+                    <Card
+                      className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive && !hasTicketHere
+                          ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
+                          : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
+                        }`}
+                      onClick={() => handleOpenTicketModal(service)}
+                    >
+                      <CardContent className="p-5 flex flex-col h-full justify-between">
+                        <div>
+                          <div className="flex items-start justify-between mb-3">
+                            <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive && !hasTicketHere
+                                ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
+                                : "bg-muted text-muted-foreground"
+                              }`}>
+                              <DynamicIcon name={service.icon} className="size-5" />
+                            </div>
+                            <Badge
+                              variant={hasTicketHere ? "default" : service.isActive ? "outline" : "destructive"}
+                              className={hasTicketHere ? "text-xs bg-amber-500 text-white border-none" : "text-xs"}
+                            >
+                              {hasTicketHere
+                                ? "Ticket actif"
+                                : service.isActive
+                                  ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
+                                  : "Fermé"
+                              }
+                            </Badge>
                           </div>
-                          <Badge
-                            variant={service.isActive ? "outline" : "destructive"}
-                            className="text-xs"
-                          >
-                            {service.isActive
-                              ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
-                              : "Fermé"
-                            }
-                          </Badge>
+                          <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
+                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
                         </div>
-                        <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
-                        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
-                      </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Clock className="size-4" />
-                          <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                        <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="size-4" />
+                            <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                          </div>
+                          {service.isActive && !hasTicketHere ? (
+                            <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                              Prendre ticket <ChevronRight className="size-4" />
+                            </span>
+                          ) : hasTicketHere ? (
+                            <span className="text-xs font-medium text-amber-600">Déjà en cours</span>
+                          ) : (
+                            <span className="text-xs font-medium text-destructive">Fermé</span>
+                          )}
                         </div>
-                        {service.isActive ? (
-                          <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                            Prendre ticket <ChevronRight className="size-4" />
-                          </span>
-                        ) : (
-                          <span className="text-xs font-medium text-destructive">Fermé</span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )
+              })}
           </motion.div>
 
           <div className="text-center mt-8">
@@ -781,9 +917,13 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
                 type="tel"
                 placeholder="Ex: 76XXXXXX"
                 value={formData.telephone}
-                onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                maxLength={8}
                 className="h-12 rounded-xl border-2"
               />
+              {phoneError && (
+                <p className="text-xs font-medium text-destructive">{phoneError}</p>
+              )}
             </div>
           </div>
           <div className="flex gap-3">
@@ -810,13 +950,15 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           <DialogHeader>
             <DialogTitle className="text-center text-2xl font-bold">Ticket Enregistré !</DialogTitle>
             <DialogDescription className="text-center text-muted-foreground">
-              Votre rang a bien été calculé pour le service {generatedTicket?.service}.
+              Votre rang a bien été calculé pour le service {selectedService?.name}.
             </DialogDescription>
           </DialogHeader>
 
           <div className="my-6 rounded-2xl bg-primary/5 p-6 border-2 border-dashed border-primary/20">
             <p className="text-xs font-bold text-primary uppercase tracking-wider">Votre Numéro de Passage</p>
-            <p className="text-5xl font-black text-primary mt-1 tracking-tight">{generatedTicket?.number}</p>
+            <p className="text-5xl font-black text-primary mt-1 tracking-tight">
+              {tickets.find(t => t.id === lastCreatedTicketId)?.number || ""}
+            </p>
           </div>
 
           <p className="text-xs text-muted-foreground bg-muted p-3 rounded-xl mb-4">
@@ -826,8 +968,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           <Button
             className="w-full bg-primary text-white h-12 rounded-xl font-semibold"
             onClick={() => {
-              setShowSuccessModal(false);
-              setTimeout(() => setShowTrackingModal(true), 200);
+              setShowSuccessModal(false)
+              setActiveModalTicketId(lastCreatedTicketId)
+              setTimeout(() => setShowTrackingModal(true), 200)
             }}
           >
             Suivre mon attente en direct
@@ -1017,14 +1160,17 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             className="fixed bottom-6 right-6 z-50"
           >
             <Button
-              onClick={() => setShowTrackingModal(true)}
+              onClick={openTrackingModal}
               className="h-14 px-5 rounded-2xl bg-primary text-white font-bold shadow-2xl flex items-center gap-3 border border-white/20 hover:scale-105 transition-transform"
             >
               <div className="relative flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
               </div>
-              <span>Ticket {generatedTicket.number} ({generatedTicket.queuePos || 1}e)</span>
+              <span>
+                Ticket {generatedTicket.number} ({generatedTicket.queuePos || 1}e)
+                {trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""}
+              </span>
               <Eye className="size-5 ml-1 opacity-80" />
             </Button>
           </motion.div>

@@ -12,7 +12,9 @@ interface TicketTrackingModalProps {
     service: string
     waitTime: number
     queuePos: number
+    totalInQueue?: number
     statut?: string
+    isYourTurn?: boolean
     counterName?: string
     phoneNumber?: string
   } | null
@@ -27,44 +29,54 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 }) => {
   if (!isOpen || !ticket) return null
 
-  const isCalled = ticket.statut === "called" || ticket.statut === "serving"
+  const isCalled = ticket.isYourTurn ?? (ticket.statut === "called" || ticket.statut === "serving")
   const guichet = ticket.counterName || "Guichet à confirmer"
   const displayPhone = ticket.phoneNumber || "+223 XX XX XX XX"
 
-  // Progression réelle basée sur le rang dans la file (plus c'est petit, plus c'est proche)
-  // et 100% dès que le ticket est appelé/en cours, en cohérence avec le reste de l'app
-  const progress = isCalled ? 100 : Math.max(15, Math.min(95, 100 - (ticket.queuePos * 10)))
+  const peopleAhead = Math.max(0, (ticket.queuePos || 1) - 1)
+
+
+  const progress = isCalled
+    ? 100
+    : ticket.totalInQueue && ticket.totalInQueue > 0
+      ? Math.max(5, Math.min(95, Math.round(((ticket.totalInQueue - (ticket.queuePos || 1) + 1) / ticket.totalInQueue) * 100)))
+      : Math.max(15, Math.min(95, 100 - (ticket.queuePos || 1) * 10))
+  const positionMessage = isCalled
+    ? "Présentez-vous au guichet"
+    : peopleAhead === 0
+      ? "Vous êtes le prochain à être appelé"
+      : `${peopleAhead} ${peopleAhead > 1 ? 'personnes attendent' : 'personne attend'} avant vous`
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-sm">
 
       {/* CARD PRINCIPALE */}
-      <div className="relative w-full max-w-4xl bg-slate-50 dark:bg-slate-900 rounded-[24px] shadow-2xl border border-border overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
+      <div className="relative w-full max-w-4xl bg-slate-50 dark:bg-slate-900 rounded-2xl sm:rounded-[24px] shadow-2xl border border-border overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200 max-h-[95vh] flex flex-col">
 
         {/* EN-TÊTE MODAL */}
-        <div className="flex items-center justify-between px-6 py-5 bg-card border-b border-border/60">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 bg-card border-b border-border/60 shrink-0">
           <div className="flex items-center gap-3">
             <div>
-              <h2 className="font-bold text-xl text-foreground tracking-tight">Suivi de mon ticket en direct</h2>
+              <h2 className="font-bold text-lg sm:text-xl text-foreground tracking-tight">Suivi de mon ticket en direct</h2>
               <p className="text-xs text-muted-foreground hidden sm:block">Votre position dans la file en temps réel</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-muted transition-colors text-muted-foreground border border-border/50">
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-muted transition-colors text-muted-foreground border border-border/50 shrink-0">
             <X className="size-5" />
           </button>
         </div>
 
         {/* CONTENU EN DEUX COLONNES */}
-        <div className="p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 max-h-[calc(100vh-140px)] overflow-y-auto">
+        <div className="p-4 sm:p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6 overflow-y-auto flex-1">
 
           {/* COLONNE GAUCHE (7/12) : SERVICE, NUMÉRO & PROGRESSION */}
-          <div className="md:col-span-7 space-y-6">
+          <div className="md:col-span-7 space-y-4 sm:space-y-6">
 
             {/* EN-TÊTE DU PASSAGE (Service & Guichet) */}
-            <div className="bg-emerald-500 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
+            <div className="bg-emerald-500 text-white p-4 sm:p-6 rounded-2xl shadow-sm flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Service</span>
-                <h3 className="text-2xl font-black tracking-tight">{ticket.service}</h3>
+                <h3 className="text-xl sm:text-2xl font-black tracking-tight">{ticket.service}</h3>
                 <div className="flex items-center gap-2 text-sm font-bold pt-1">
                   <MapPin className="size-4 shrink-0 text-emerald-100" />
                   <span>{guichet}</span>
@@ -76,11 +88,11 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
             </div>
 
             {/* BLOCK CENTRAL : LE NUMÉRO */}
-            <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-sm relative">
+            <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 text-center space-y-3 sm:space-y-4 shadow-sm relative">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
                 Votre Numéro de Passage
               </span>
-              <h1 className="text-7xl font-black text-emerald-500 tracking-tighter my-2">
+              <h1 className="text-5xl sm:text-7xl font-black text-emerald-500 tracking-tighter my-2">
                 {ticket.number}
               </h1>
               <div className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-1.5 rounded-full text-xs font-bold">
@@ -105,17 +117,15 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
           <div className="md:col-span-5 flex flex-col justify-between space-y-4">
 
             {/* COMPTEUR DE RANG */}
-            <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
-              <div className="flex items-center gap-4">
-                <div className="size-16 rounded-2xl border-2 border-emerald-500 flex flex-col items-center justify-center shrink-0 bg-emerald-500/5">
-                  <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">{ticket.queuePos}</span>
+            <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 space-y-4 shadow-sm">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="size-14 sm:size-16 rounded-2xl border-2 border-emerald-500 flex flex-col items-center justify-center shrink-0 bg-emerald-500/5">
+                  <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 leading-none">{ticket.queuePos}</span>
                   <span className="text-[10px] text-muted-foreground font-bold uppercase mt-1">Rang</span>
                 </div>
                 <div className="space-y-1">
-                  <p className="font-bold text-base text-foreground">
-                    {isCalled
-                      ? "Présentez-vous au guichet"
-                      : `${ticket.queuePos} ${ticket.queuePos-1 > 1 ? 'personnes attendent' : 'personne attend'} avant vous`}
+                  <p className="font-bold text-sm sm:text-base text-foreground">
+                    {positionMessage}
                   </p>
                   <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Clock className="size-4 text-amber-500 shrink-0" />
@@ -135,7 +145,7 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 
             {/* NOTIFICATION SMS */}
             <div className="space-y-3">
-              <div className="flex items-center gap-3 bg-card border border-border rounded-xl p-3.5 shadow-sm">
+              <div className="flex items-center gap-3 bg-card border border-border rounded-xl p-3 sm:p-3.5 shadow-sm">
                 <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl shrink-0">
                   <MessageSquare className="size-5" />
                 </div>

@@ -299,7 +299,16 @@ if (!counter) {
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex size-12 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-lg">
-              {counter.name.split(" ")[1] || "Guichet Inconnu Erreur"}
+              {
+  (() => {
+    const parts = counter.name.split(" ");
+    
+    if (parts.length >= 2) return parts[1];
+    
+    // Si c'est un seul mot, on prend les deux premières lettres
+    return counter.name.substring(0, 2);
+  })()
+}
             </div>
             <div>
               <h1 className="text-lg font-bold text-foreground">{counter.name}</h1>

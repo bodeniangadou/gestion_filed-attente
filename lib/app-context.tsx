@@ -872,8 +872,6 @@ const ticketNumber = `${ticketPrefix}${String(position).padStart(3, "0")}`;
         setAgents,
         hospitalSettings,
         setHospitalSettings,
-        fetchHospitalSettings: () => Promise<void>,
-  updateHospitalSettings: (updates: Partial<HospitalSettings>) => Promise<void>,
         loginAsRole,
         loginAsAgent,
         logout,

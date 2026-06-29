@@ -1,174 +1,280 @@
 "use client"
 
-import { useState } from "react"
-import { RotateCw, Search } from "lucide-react"
+import { useState, useMemo } from "react"
+import { RotateCw, Search, Clock, Users, CheckCircle2, UserX } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import { useApp } from "@/lib/app-context"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+const formatDateTime = (dateInput: Date | string) => {
+  const date = new Date(dateInput)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMinutes = Math.floor(diffMs / 60000)
+  const h = date.getHours().toString().padStart(2, "0")
+  const m = date.getMinutes().toString().padStart(2, "0")
+
+  const isToday = date.toDateString() === now.toDateString()
+  const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1)
+  const isYesterday = date.toDateString() === yesterday.toDateString()
+
+  if (isToday) {
+    if (diffMinutes < 1) return "À l'instant"
+    if (diffMinutes < 60) return `Il y a ${diffMinutes} min`
+    return `${h}h${m}`
+  }
+  if (isYesterday) return `Hier, ${h}h${m}`
+  if (diffMs < 1000 * 60 * 60 * 24 * 7)
+    return date.toLocaleDateString("fr-FR", { weekday: "long" }) + ` ${h}h${m}`
+  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" })
+}
+
+const getDuration = (ticket: any) => {
+  if (ticket.statut !== "completed" || !ticket.completedAt) return null
+  const diff = new Date(ticket.completedAt).getTime() - new Date(ticket.createdAt).getTime()
+  const total = Math.round(diff / 60000)
+  if (total < 60) return `${total} min`
+  const h = Math.floor(total / 60), m = total % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
+// Palette harmonisée avec le reste de l'app (primary/emerald, ambre pour l'attente,
+// destructive pour les états négatifs, gris neutre pour fermé/annulé) — suppression
+// du bleu et du violet qui n'apparaissent nulle part ailleurs dans tes autres pages.
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  waiting:   { label: "En attente", className: "bg-amber-500/10 text-amber-700 border-amber-500/20" },
+  called:    { label: "Appelé",     className: "bg-primary/10 text-primary border-primary/20" },
+  serving:   { label: "En cours",   className: "bg-primary text-primary-foreground border-primary" },
+  completed: { label: "Terminé",    className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" },
+  absent:    { label: "Absent",     className: "bg-destructive/10 text-destructive border-destructive/20" },
+  cancelled: { label: "Annulé",     className: "bg-muted text-muted-foreground border-border" },
+}
+
+type Tab = "queue" | "history" | "absent"
 
 export default function FilePage() {
-  const [activeTab, setActiveTab] = useState("queue")
+  const [activeTab, setActiveTab] = useState<Tab>("queue")
   const [search, setSearch] = useState("")
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const { tickets, getAgentCounter, fetchTickets } = useApp()
 
   const counter = getAgentCounter()
 
-const formatDateTime = (dateInput: Date | string) => {
-  const date = new Date(dateInput);
-  const now = new Date();
-  
-  // Fonctions de comparaison calendaire
-  const isToday = (d1: Date, d2: Date) => 
-    d1.getDate() === d2.getDate() && d1.getMonth() === d2.getMonth() && d1.getFullYear() === d2.getFullYear();
-  
-  const isYesterday = (d1: Date, d2: Date) => {
-    const yesterday = new Date(d2);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return d1.getDate() === yesterday.getDate() && d1.getMonth() === yesterday.getMonth() && d1.getFullYear() === yesterday.getFullYear();
-  };
-
-  const diffMs = now.getTime() - date.getTime();
-  const diffMinutes = Math.floor(diffMs / 60000);
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-
-  // 1. Aujourd'hui
-  if (isToday(date, now)) {
-    if (diffMinutes < 1) return "À l'instant";
-    if (diffMinutes < 60) return ` Il y'a ${diffMinutes} min`;
-    return `${hours}h${minutes}`; // Exemple: "14h30"
-  }
-
-  // 2. Hier
-  if (isYesterday(date, now)) {
-    return `Hier, ${hours}h${minutes}`;
-  }
-
-  // 3. Cette semaine (moins de 7 jours)
-  if (diffMs < 1000 * 60 * 60 * 24 * 7) {
-    return date.toLocaleDateString('fr-FR', { weekday: 'long' }) + ` à ${hours}h${minutes}`;
-  }
-
-  // 4. Plus vieux
-  return date.toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric'
-  });
-};
-
-  // Tickets du service géré par l'agent connecté uniquement
-  const serviceTickets = tickets.filter((t) =>
-    counter ? t.service?.id === counter.serviceId : false
+  const serviceTickets = useMemo(() =>
+    tickets.filter(t => counter ? t.service?.id === counter.serviceId : false),
+    [tickets, counter]
   )
 
-  const filteredData = serviceTickets
-    .filter((t) => {
-      if (activeTab === "queue") return t.statut === "waiting" || t.statut === "called" || t.statut === "serving"
-      if (activeTab === "history") return t.statut === "completed"
-      if (activeTab === "absent") return t.statut === "absent"
-      return true
-    })
-    .filter((t) => {
-      const q = search.toLowerCase()
-      return (
-        t.userName.toLowerCase().includes(q) ||
-        t.number.toLowerCase().includes(q) ||
-        (t.phone || "").includes(search)
-      )
-    })
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  const tabCounts = useMemo(() => ({
+    queue:   serviceTickets.filter(t => ["waiting", "called", "serving"].includes(t.statut)).length,
+    history: serviceTickets.filter(t => t.statut === "completed").length,
+    absent:  serviceTickets.filter(t => t.statut === "absent").length,
+  }), [serviceTickets])
 
-  const getDuration = (ticket: typeof serviceTickets[number]) => {
-  if (ticket.statut !== "completed" || !ticket.completedAt) return "-";
+  const filteredData = useMemo(() => {
+    return serviceTickets
+      .filter(t => {
+        if (activeTab === "queue") return ["waiting", "called", "serving"].includes(t.statut)
+        if (activeTab === "history") return t.statut === "completed"
+        if (activeTab === "absent") return t.statut === "absent"
+        return true
+      })
+      .filter(t => {
+        const q = search.toLowerCase()
+        return (
+          t.userName.toLowerCase().includes(q) ||
+          t.number.toLowerCase().includes(q) ||
+          (t.phone || "").includes(search)
+        )
+      })
+      .sort((a, b) => {
+        if (activeTab === "queue") {
+          const order: Record<string, number> = { called: 0, serving: 1, waiting: 2 }
+          return (order[a.statut] ?? 3) - (order[b.statut] ?? 3)
+        }
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      })
+  }, [serviceTickets, activeTab, search])
 
-  const diffInMs = new Date(ticket.completedAt).getTime() - new Date(ticket.createdAt).getTime();
-  const totalMinutes = Math.round(diffInMs / 60000);
-
-  if (totalMinutes < 60) {
-    return `${totalMinutes} min`;
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await fetchTickets()
+    setTimeout(() => setIsRefreshing(false), 600)
   }
 
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
-};
+  const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+    { key: "queue",   label: "En attente", icon: <Clock className="size-3.5" /> },
+    { key: "history", label: "Historique", icon: <CheckCircle2 className="size-3.5" /> },
+    { key: "absent",  label: "Absents",    icon: <UserX className="size-3.5" /> },
+  ]
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-4 font-sans text-[13px]">
-      <div className="flex items-center justify-between bg-white p-3 rounded border border-gray-200 shadow-sm">
-        <h1 className="font-bold text-gray-800">Gestion de la File d'Attente</h1>
-        <button onClick={() => fetchTickets()} className="flex items-center gap-2 px-3 py-1.5 bg-emerald text-white rounded text-[12px] font-bold hover:bg-green-700">
-          <RotateCw size={12} /> Actualiser
-        </button>
+    <div className="min-h-screen bg-background pb-10">
+
+      {/* Header */}
+      <div className="border-b border-border bg-card px-6 py-4 shadow-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-foreground tracking-tight">File d'attente</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {counter ? `Guichet ${counter.name || counter.number}` : "Aucun guichet assigné"}
+            </p>
+          </div>
+          <Button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 text-sm font-semibold shadow-sm"
+          >
+            <RotateCw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            Actualiser
+          </Button>
+        </div>
       </div>
 
-      {!counter ? (
-        <div className="bg-white border border-gray-200 rounded p-6 text-center text-gray-400 text-[12px] italic">
-          Aucun guichet assigné pour le moment.
-        </div>
-      ) : (
-        <>
-          <div className="flex gap-2">
-            <div className="relative flex-grow">
-              <Search className="absolute left-3 top-2 text-gray-400" size={14} />
-              <input 
-                type="text" 
-                placeholder="Rechercher par ticket, nom ou téléphone..." 
-                className="w-full pl-9 pr-4 py-1.5 border border-gray-200 rounded text-[13px] focus:outline-none focus:ring-1 focus:ring-green-600"
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <div className="flex bg-gray-100 p-0.5 rounded">
-              {["queue", "history", "absent"].map((tab) => (
-                <button 
-                  key={tab} 
-                  onClick={() => setActiveTab(tab)} 
-                  className={`px-4 py-1 text-[12px] font-bold rounded capitalize transition-all ${activeTab === tab ? "bg-white text-green-700 shadow-sm" : "text-gray-500"}`}
-                >
-                  {tab === "queue" ? "En attente" : tab === "history" ? "Historique" : "Absents"}
-                </button>
+      <div className="mx-auto max-w-5xl px-6 py-6 space-y-5">
+
+        {!counter ? (
+          <div className="bg-card border border-dashed border-border rounded-2xl p-12 text-center">
+            <Users className="size-8 text-muted-foreground mx-auto mb-3 opacity-40" />
+            <p className="text-sm text-muted-foreground">Aucun guichet assigné pour le moment.</p>
+          </div>
+        ) : (
+          <>
+            {/* Stats — harmonisées avec le style StatCard utilisé sur le dashboard agent */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "En attente", value: tabCounts.queue, color: "text-amber-600", iconBg: "bg-amber-500/10", icon: <Clock className="size-4 text-amber-600" /> },
+                { label: "Terminés", value: tabCounts.history, color: "text-emerald-600", iconBg: "bg-emerald-500/10", icon: <CheckCircle2 className="size-4 text-emerald-600" /> },
+                { label: "Absents", value: tabCounts.absent, color: "text-destructive", iconBg: "bg-destructive/10", icon: <UserX className="size-4 text-destructive" /> },
+              ].map(s => (
+                <div key={s.label} className="rounded-xl border border-border bg-card p-3.5 flex items-center justify-between shadow-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">{s.label}</p>
+                    <p className={`text-2xl font-bold mt-0.5 ${s.color}`}>{s.value}</p>
+                  </div>
+                  <div className={`size-9 rounded-lg flex items-center justify-center ${s.iconBg}`}>
+                    {s.icon}
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
 
-          <div className="bg-white border border-gray-200 rounded overflow-hidden">
-            <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 font-bold uppercase text-[11px]">
-                <tr>
-                  <th className="px-4 py-2">Ticket</th>
-                  <th className="px-4 py-2">Nom du Patient</th>
-                  <th className="px-4 py-2">Téléphone</th>
-                  <th className="px-4 py-2">Statut</th>
-                  <th className="px-4 py-2">Date / Heure</th>
-                  <th className="px-4 py-2">Durée</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredData.map((t) => (
-                  <tr key={t.id} className="hover:bg-gray-50 text-gray-700">
-                    <td className="px-4 py-2 font-black text-green-700 font-mono text-[14px]">{t.number}</td>
-                    <td className="px-4 py-2 font-medium">{t.userName}</td>
-                    <td className="px-4 py-2 font-mono text-gray-600 tracking-wider">{t.phone || "-"}</td>
-                    <td className="px-4 py-2">
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        t.statut === 'waiting' || t.statut === 'called' || t.statut === 'serving' ? 'bg-amber-100 text-amber-700' : 
-                        t.statut === 'completed' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {t.statut}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-gray-500 font-mono text-[12px]">{formatDateTime(t.createdAt)}</td>
-                    <td className="px-4 py-2 text-gray-500 font-mono text-[12px]">{getDuration(t)}</td>
-                  </tr>
+            {/* Recherche + tabs */}
+            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  placeholder="Rechercher par ticket, nom ou téléphone..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-9 h-10 rounded-xl bg-accent/40"
+                />
+              </div>
+              <div className="flex bg-muted rounded-xl p-1 gap-1">
+                {tabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      activeTab === tab.key
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tab.icon}
+                    {tab.label}
+                    <span className={`ml-0.5 text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      activeTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted-foreground/10"
+                    }`}>
+                      {tabCounts[tab.key]}
+                    </span>
+                  </button>
                 ))}
-              </tbody>
-            </table>
-            {filteredData.length === 0 && (
-              <div className="p-6 text-center text-gray-400 text-[12px] italic">Aucun résultat.</div>
-            )}
-          </div>
-        </>
-      )}
+              </div>
+            </div>
+
+            {/* Table — CORRIGÉ : un seul fondu (crossfade) sur tout le bloc au changement
+                d'onglet, au lieu d'une cascade ligne par ligne avec décalage vertical qui
+                donnait l'effet de "saut" visuel à chaque clic sur un tab. */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-border bg-muted/40">
+                    <tr>
+                      {["Ticket", "Patient", "Téléphone", "Statut", "Heure", "Durée"].map(col => (
+                        <th key={col} className="px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <AnimatePresence mode="wait">
+                    <motion.tbody
+                      key={activeTab}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="divide-y divide-border/60"
+                    >
+                      {filteredData.map((t) => {
+                        const statusCfg = STATUS_CONFIG[t.statut] || { label: t.statut, className: "bg-muted text-muted-foreground border-border" }
+                        const duration = getDuration(t)
+                        return (
+                          <tr key={t.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3">
+                              <span className="font-black text-primary font-mono text-base tracking-tight">
+                                {t.number}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-medium text-foreground">{t.userName}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="font-mono text-muted-foreground text-xs tracking-wider">
+                                {t.phone || "—"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={cn("inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border", statusCfg.className)}>
+                                {statusCfg.label}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-xs text-muted-foreground font-mono">
+                                {formatDateTime(t.createdAt)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              {duration
+                                ? <span className="text-xs font-semibold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">{duration}</span>
+                                : <span className="text-xs text-muted-foreground">—</span>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
+
+                      {filteredData.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-14 text-center">
+                            <Clock className="size-7 text-muted-foreground mx-auto mb-3 opacity-30" />
+                            <p className="text-sm text-muted-foreground">
+                              {search ? `Aucun résultat pour "${search}"` : "Aucun ticket dans cette catégorie."}
+                            </p>
+                          </td>
+                        </tr>
+                      )}
+                    </motion.tbody>
+                  </AnimatePresence>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -216,12 +216,10 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         return
       }
 
-      const currentPosition = calculateQueue(selectedService.id, tickets) + 1
-      // CORRIGÉ : on extrait bien le préfixe (1 lettre) du nom du service avant de générer
-      // le code, exactement comme dans handleTakeTicket. Avant, le nom complet du service
-      // était passé tel quel (ex: "Cardiologie-003" au lieu de "C-003").
-      const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
-      const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
+    
+        const currentPosition = calculateQueue(selectedService.id, tickets) + 1
+        const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
+        const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
 
       const { data, error } = await supabase
         .from("ticket")
