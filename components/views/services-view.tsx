@@ -49,6 +49,26 @@ const isWithinOperatingHours = (openTime: string, closeTime: string) => {
   return currentTime >= openTime && currentTime <= closeTime
 }
 
+// CORRIGÉ : même extraction robuste que LandingScannerModal (slash final, espaces,
+// encodage URL, ou identifiant brut directement scanné)
+function extractServiceKey(decodedText: string): string {
+  const cleaned = decodedText.trim()
+
+  const match = cleaned.match(/\/scanner\/([^/?#]+)/)
+  if (match) {
+    return decodeURIComponent(match[1]).trim()
+  }
+
+  if (cleaned.includes("?")) {
+    const queryPart = cleaned.split("?")[1]
+    const urlParams = new URLSearchParams(queryPart)
+    const fromQuery = urlParams.get("service") || urlParams.get("scan")
+    if (fromQuery) return fromQuery.trim()
+  }
+
+  return cleaned
+}
+
 export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -216,10 +236,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         return
       }
 
-    
-        const currentPosition = calculateQueue(selectedService.id, tickets) + 1
-        const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
-        const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
+      const currentPosition = calculateQueue(selectedService.id, tickets) + 1
+      const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
+      const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
 
       const { data, error } = await supabase
         .from("ticket")
@@ -281,9 +300,12 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   }, [searchParams, services, selectedService])
 
   useEffect(() => {
-    if (showScannerModal) {
+    // CORRIGÉ : on attend que `services` soit chargé avant de lancer la caméra — sans
+    // ça, un scan trop rapide (avant le premier fetchServices()) renvoyait toujours
+    // "QR invalide", même avec un QR parfaitement valide.
+    if (showScannerModal && services.length > 0) {
       setScannerError(null)
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const html5QrCode = new Html5Qrcode("reader")
         html5QrCodeRef.current = html5QrCode
 
@@ -291,12 +313,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           { facingMode: "environment" }, 
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText) => {
-            let serviceKey = decodedText
-            if (decodedText.includes("?scan=")) {
-              const urlParams = new URLSearchParams(decodedText.split("?")[1])
-              serviceKey = urlParams.get("scan") || decodedText
-            }
-
+            const serviceKey = extractServiceKey(decodedText)
             const matchedService = services.find(s => s.id === serviceKey)
 
             if (matchedService) {
@@ -321,7 +338,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
                 }).catch(err => console.error(err))
               }
             } else {
-              setScannerError("QR code invalide ou service non reconnu.")
+              setScannerError(`QR code invalide ou service non reconnu. (Code détecté : ${serviceKey.substring(0, 40)})`)
             }
           },
           () => {}
@@ -330,6 +347,10 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           setScannerError("Impossible d'accéder à la caméra de votre appareil.")
         })
       }, 300)
+
+      return () => clearTimeout(timer)
+    } else if (showScannerModal && services.length === 0) {
+      setScannerError("Chargement des services en cours, veuillez patienter...")
     }
 
     return () => {
