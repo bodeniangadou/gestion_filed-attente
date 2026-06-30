@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
+import { useSearchParams } from "next/navigation"
 import * as LucideIcons from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -159,6 +160,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const { services, counters, tickets, fetchTickets } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [showTicketModal, setShowTicketModal] = useState(false)
@@ -166,6 +168,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
 
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [phoneError, setPhoneError] = useState<string | null>(null)
@@ -300,33 +303,32 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
   // Ouverture automatique du modal via ?service=xxx dans l'URL (venant du scan d'un QR
   // code, soit directement, soit via la redirection de /scanner/[serviceId]).
-  useEffect(() => {
-    if (services.length === 0 || selectedService) return
+ useEffect(() => {
+  if (services.length === 0 || selectedService) return
 
-    const params = new URLSearchParams(window.location.search)
-    const serviceId = params.get("service") || params.get("scan")
-    if (!serviceId) return
+  const serviceId = searchParams.get("service") || searchParams.get("scan")
+  if (!serviceId) return
 
-    const serviceToSelect = services.find(s => s.id === serviceId)
-    if (!serviceToSelect) return
+  const serviceToSelect = services.find(s => s.id === serviceId)
+  if (!serviceToSelect) return
 
-    const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
+  const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
 
-    if (!isReallyActive) {
-      toast.error("Service indisponible", {
-        description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
-      })
-    } else if (hasActiveTicketForService(serviceId)) {
-      toast.error("Ticket déjà en cours", {
-        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
-      })
-    } else {
-      handleOpenTicketModal(serviceToSelect)
-    }
+  if (!isReallyActive) {
+    toast.error("Service indisponible", {
+      description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
+    })
+  } else if (hasActiveTicketForService(serviceId)) {
+    toast.error("Ticket déjà en cours", {
+      description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
+    })
+  } else {
+    handleOpenTicketModal(serviceToSelect)
+  }
 
-    window.history.replaceState({}, document.title, window.location.pathname)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services, servicesWithStatus, selectedService, trackedActiveTickets])
+  window.history.replaceState({}, document.title, window.location.pathname)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [services, servicesWithStatus, selectedService, trackedActiveTickets, searchParams])
 
   const activeServices = services.filter(s => s.isActive)
   const avgWaitTime = activeServices.length > 0
