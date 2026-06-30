@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import * as LucideIcons from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -169,6 +169,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
   const searchParams = useSearchParams()
+const router = useRouter()
 
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [phoneError, setPhoneError] = useState<string | null>(null)
@@ -326,7 +327,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     handleOpenTicketModal(serviceToSelect)
   }
 
-  window.history.replaceState({}, document.title, window.location.pathname)
+router.replace(window.location.pathname, { scroll: false })
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [services, servicesWithStatus, selectedService, trackedActiveTickets, searchParams])
 
