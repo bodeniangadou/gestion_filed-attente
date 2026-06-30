@@ -120,12 +120,6 @@ const checkServiceStatus = (service: Service, counters: Counter[]) => {
   return isTimeValid && hasActiveCounter
 }
 
-// CORRIGÉ : préfixe sur 2 lettres (au lieu d'1 seule) pour éviter que deux services
-// dont le nom commence par la même lettre génèrent le même code (ex: "Pédiatrie" et
-// "Pharmacie" donnaient toutes les deux "P..."). Le numéro séquentiel est désormais
-// basé sur le nombre TOTAL de tickets jamais créés pour ce service (tous statuts
-// confondus), et non plus seulement les tickets "en attente" — qui retombait à 0/1
-// dès que la file se vidait, provoquant la réutilisation du même numéro dans le temps.
 function getServicePrefix(serviceName: string): string {
   const cleaned = serviceName
     .normalize("NFD")
@@ -144,23 +138,20 @@ const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?
   return allTickets.filter(t => t.service?.id === serviceId && t.statut === "waiting").length
 }
 
-// Compte tous les tickets jamais créés pour un service (toutes statuts), utilisé
-// uniquement pour générer un numéro qui ne se répète jamais — différent du rang
-// affiché au patient (queuePos), qui lui reste basé sur la file d'attente actuelle.
 const countAllTicketsForService = (serviceId: string, allTickets: { service?: { id?: string } }[]) => {
   return allTickets.filter(t => t.service?.id === serviceId).length
 }
 
-// Même règle de validation que LoginModal : exactement 8 chiffres, cohérent dans toute l'app
 const isValidPhone = (phone: string) => /^\d{8}$/.test(phone.trim())
 
 const ACTIVE_STATUSES = ["waiting", "called", "serving"]
+const SERVICES_PER_PAGE = 6
 
 export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
   const { services, counters, tickets, fetchTickets } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  
+  const [currentPage, setCurrentPage] = useState(1)
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [showTicketModal, setShowTicketModal] = useState(false)
@@ -168,30 +159,26 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
+
   const searchParams = useSearchParams()
-const router = useRouter()
+  const router = useRouter()
 
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [phoneError, setPhoneError] = useState<string | null>(null)
 
-  // Liste d'identifiants de tickets suivis (plusieurs services différents possibles
-  // en parallèle), au lieu d'un seul ID
   const [trackedTicketIds, setTrackedTicketIds] = useState<string[]>([])
-
-  // Ticket actuellement affiché dans le modal de suivi (permet de naviguer
-  // entre plusieurs tickets actifs si la personne en a plus d'un)
   const [activeModalTicketId, setActiveModalTicketId] = useState<string | null>(null)
-
-  // CORRIGÉ : évite le bug "section blanche mais cliquable" lié à l'hydratation
-  // Next.js + Framer Motion. Les animations d'entrée ne démarrent qu'une fois le
-  // composant réellement monté côté client.
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  // Récupère la liste des tickets anonymes suivis depuis le localStorage au montage
+  // Remet à la page 1 quand la recherche change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
   useEffect(() => {
     const saved = localStorage.getItem("rang_plus_anonymous_ticket_ids")
     if (saved) {
@@ -199,7 +186,6 @@ const router = useRouter()
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed)) setTrackedTicketIds(parsed)
       } catch {
-        // ancien format (un seul id en string) — on migre proprement
         if (typeof saved === "string" && saved.length > 0) {
           setTrackedTicketIds([saved])
         }
@@ -215,16 +201,12 @@ const router = useRouter()
     }
   }, [trackedTicketIds])
 
-  // Liste des tickets suivis qui sont encore réellement actifs en base (le canal
-  // Realtime de `tickets` garde tout ça à jour automatiquement)
   const trackedActiveTickets: Ticket[] = useMemo(() => {
     return trackedTicketIds
       .map(id => tickets.find(t => t.id === id))
       .filter((t): t is Ticket => !!t && ACTIVE_STATUSES.includes(t.statut))
   }, [trackedTicketIds, tickets])
 
-  // Nettoyage automatique : si un ticket suivi a disparu de la liste active
-  // (terminé / annulé / absent), on arrête de le suivre
   useEffect(() => {
     const stillActiveIds = trackedActiveTickets.map(t => t.id)
     const hasStaleIds = trackedTicketIds.some(id => !stillActiveIds.includes(id))
@@ -233,23 +215,17 @@ const router = useRouter()
     }
   }, [trackedActiveTickets, trackedTicketIds])
 
-  // Le ticket le plus urgent à afficher en priorité : appelé/en cours d'abord,
-  // sinon le plus ancien en attente
   const mostUrgentTicket: Ticket | null = useMemo(() => {
     if (trackedActiveTickets.length === 0) return null
-
     const calledOrServing = trackedActiveTickets.filter(t => t.statut === "called" || t.statut === "serving")
     if (calledOrServing.length > 0) {
       return calledOrServing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0]
     }
-
     return [...trackedActiveTickets].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     )[0]
   }, [trackedActiveTickets])
 
-  // Ticket actuellement choisi pour le modal : celui explicitement sélectionné par
-  // la personne (navigation), ou par défaut le plus urgent
   const ticketShownInModal: Ticket | null = useMemo(() => {
     if (activeModalTicketId) {
       const found = trackedActiveTickets.find(t => t.id === activeModalTicketId)
@@ -258,7 +234,6 @@ const router = useRouter()
     return mostUrgentTicket
   }, [activeModalTicketId, trackedActiveTickets, mostUrgentTicket])
 
-  // Objet compatible avec ce que le modal de suivi attend
   const generatedTicket = ticketShownInModal
     ? {
         id: ticketShownInModal.id,
@@ -283,53 +258,48 @@ const router = useRouter()
     }))
   }, [services, counters])
 
-  // Le visiteur a-t-il déjà un ticket actif sur ce service précis ?
   const hasActiveTicketForService = (serviceId: string) => {
     return trackedActiveTickets.some(t => t.service?.id === serviceId)
   }
 
   const handleOpenTicketModal = (service: Service) => {
     if (!service.isActive) return
-
     if (hasActiveTicketForService(service.id)) {
       toast.error("Ticket déjà en cours", {
         description: `Vous avez déjà un ticket actif pour le service ${service.name}.`
       })
       return
     }
-
     setSelectedService(service)
     setShowTicketModal(true)
   }
 
-  // Ouverture automatique du modal via ?service=xxx dans l'URL (venant du scan d'un QR
-  // code, soit directement, soit via la redirection de /scanner/[serviceId]).
- useEffect(() => {
-  if (services.length === 0 || selectedService) return
+  useEffect(() => {
+    if (services.length === 0 || selectedService) return
 
-  const serviceId = searchParams.get("service") || searchParams.get("scan")
-  if (!serviceId) return
+    const serviceId = searchParams.get("service") || searchParams.get("scan")
+    if (!serviceId) return
 
-  const serviceToSelect = services.find(s => s.id === serviceId)
-  if (!serviceToSelect) return
+    const serviceToSelect = services.find(s => s.id === serviceId)
+    if (!serviceToSelect) return
 
-  const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
+    const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
 
-  if (!isReallyActive) {
-    toast.error("Service indisponible", {
-      description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
-    })
-  } else if (hasActiveTicketForService(serviceId)) {
-    toast.error("Ticket déjà en cours", {
-      description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
-    })
-  } else {
-    handleOpenTicketModal(serviceToSelect)
-  }
+    if (!isReallyActive) {
+      toast.error("Service indisponible", {
+        description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
+      })
+    } else if (hasActiveTicketForService(serviceId)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
+      })
+    } else {
+      handleOpenTicketModal(serviceToSelect)
+    }
 
-router.replace(window.location.pathname, { scroll: false })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [services, servicesWithStatus, selectedService, trackedActiveTickets, searchParams])
+    router.replace(window.location.pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, servicesWithStatus, selectedService, trackedActiveTickets, searchParams])
 
   const activeServices = services.filter(s => s.isActive)
   const avgWaitTime = activeServices.length > 0
@@ -341,10 +311,28 @@ router.replace(window.location.pathname, { scroll: false })
       )
     : 0
 
-  const filteredServices = services.filter(s =>
-    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Liste filtrée + triée (actifs en premier) — base pour la pagination
+  const filteredAndSortedServices = useMemo(() => {
+    return services
+      .filter(s =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.description.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .map((service) => ({
+        ...service,
+        isActive: servicesWithStatus.find(s => s.id === service.id)?.isActive ?? service.isActive
+      }))
+      .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
+  }, [services, servicesWithStatus, searchQuery])
+
+  const totalPages = Math.ceil(filteredAndSortedServices.length / SERVICES_PER_PAGE)
+
+  const paginatedServices = useMemo(() => {
+    return filteredAndSortedServices.slice(
+      (currentPage - 1) * SERVICES_PER_PAGE,
+      currentPage * SERVICES_PER_PAGE
+    )
+  }, [filteredAndSortedServices, currentPage])
 
   const handlePhoneChange = (value: string) => {
     const digitsOnly = value.replace(/\D/g, "")
@@ -352,8 +340,6 @@ router.replace(window.location.pathname, { scroll: false })
     setPhoneError(null)
   }
 
-  // Vérification anti-doublon en BDD (nom ET téléphone, plus le blocage visuel déjà
-  // fait sur ce même service) avant insertion réelle dans Supabase + resynchronisation.
   const handleConfirmTicket = async () => {
     if (!selectedService || !formData.nomComplet || !formData.telephone || isSubmitting) return
 
@@ -362,8 +348,6 @@ router.replace(window.location.pathname, { scroll: false })
       return
     }
 
-    // Double sécurité : revérifie juste avant l'envoi, au cas où un ticket aurait été
-    // pris entre l'ouverture du formulaire et la confirmation (autre onglet, etc.)
     if (hasActiveTicketForService(selectedService.id)) {
       toast.error("Ticket déjà en cours", {
         description: `Vous avez déjà un ticket actif pour le service ${selectedService.name}.`
@@ -378,7 +362,6 @@ router.replace(window.location.pathname, { scroll: false })
       const fullName = formData.nomComplet.trim()
       const phoneValue = formData.telephone.trim()
 
-      // Vérifie qu'aucun ticket actif n'existe déjà pour ce nom sur ce service
       const { data: existingActiveTickets, error: checkError } = await supabase
         .from("ticket")
         .select("id")
@@ -396,7 +379,6 @@ router.replace(window.location.pathname, { scroll: false })
         return
       }
 
-      // Vérifie aussi par numéro de téléphone, pour éviter le contournement par nom légèrement différent
       const { data: existingPhoneTickets, error: checkPhoneError } = await supabase
         .from("ticket")
         .select("id")
@@ -414,7 +396,6 @@ router.replace(window.location.pathname, { scroll: false })
         return
       }
 
-      // Trouve un guichet actif disponible pour ce service
       const activeCounters = counters.filter(c => c.serviceId === selectedService.id && c.isActive)
       if (activeCounters.length === 0) {
         toast.error("Service indisponible", {
@@ -436,11 +417,6 @@ router.replace(window.location.pathname, { scroll: false })
         }
       })
 
-      // Rang réel dans la file (affiché au patient) — distinct du numéro de séquence
-      const currentPosition = calculateQueuePosition(selectedService.id, tickets) + 1
-
-      // CORRIGÉ : numéro de ticket basé sur le total de tickets jamais créés pour ce
-      // service (toujours croissant, jamais réutilisé), avec un préfixe à 2 lettres
       const sequenceNumber = countAllTicketsForService(selectedService.id, tickets) + 1
       const ticketNumber = generateUniqueTicketCode(selectedService.name, sequenceNumber)
 
@@ -462,10 +438,8 @@ router.replace(window.location.pathname, { scroll: false })
 
       if (error) throw error
 
-      // Resynchronisation immédiate du state global temps réel
       await fetchTickets()
 
-      // On ajoute ce nouveau ticket à la liste suivie (sans perdre les précédents)
       setTrackedTicketIds(prev => Array.from(new Set([...prev, data.id])))
       setLastCreatedTicketId(data.id)
 
@@ -492,7 +466,6 @@ router.replace(window.location.pathname, { scroll: false })
     }
   }
 
-  // Annulation réelle en BDD du ticket actuellement affiché dans le modal de suivi
   const handleCancelTrackedTicket = async () => {
     if (!ticketShownInModal) return
     const idToCancel = ticketShownInModal.id
@@ -512,17 +485,21 @@ router.replace(window.location.pathname, { scroll: false })
     } finally {
       setTrackedTicketIds(prev => prev.filter(id => id !== idToCancel))
       setActiveModalTicketId(null)
-      // On ne ferme le modal que s'il ne reste plus aucun ticket actif à afficher
       if (trackedActiveTickets.length <= 1) {
         setShowTrackingModal(false)
       }
     }
   }
 
-  // Ouverture du modal sur le ticket le plus urgent (bouton flottant / nav)
   const openTrackingModal = () => {
     setActiveModalTicketId(mostUrgentTicket?.id || null)
     setShowTrackingModal(true)
+  }
+
+  // Scroll vers la section services puis change de page
+  const goToPage = (page: number) => {
+    setCurrentPage(page)
+    document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })
   }
 
   const containerVariants = {
@@ -540,7 +517,8 @@ router.replace(window.location.pathname, { scroll: false })
 
   return (
     <div className="min-h-screen bg-background relative">
-      {/* NAVBAR */}
+
+      {/* ───────────── NAVBAR ───────────── */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-6">
           <div
@@ -617,8 +595,7 @@ router.replace(window.location.pathname, { scroll: false })
             className="md:hidden border-t border-border bg-background"
           >
             <div className="flex flex-col p-4 gap-2">
-              
-               <a href="#services-section"
+              <a href="#services-section"
                 onClick={() => setMobileMenuOpen(false)}
                 className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
               >
@@ -658,7 +635,7 @@ router.replace(window.location.pathname, { scroll: false })
         )}
       </header>
 
-      {/* HERO SECTION */}
+      {/* ───────────── HERO ───────────── */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
@@ -718,7 +695,7 @@ router.replace(window.location.pathname, { scroll: false })
         </div>
       </section>
 
-      {/* STATS CARDS */}
+      {/* ───────────── STATS ───────────── */}
       <section className="px-6 -mt-4 lg:mt-0">
         <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="mx-auto max-w-4xl">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -777,7 +754,7 @@ router.replace(window.location.pathname, { scroll: false })
         </motion.div>
       </section>
 
-      {/* SERVICES SECTION */}
+      {/* ───────────── SERVICES ───────────── */}
       <section id="services-section" className="px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-4xl">
           <motion.div
@@ -788,22 +765,19 @@ router.replace(window.location.pathname, { scroll: false })
           >
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Nos Services Médicaux</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Recherchez ou scanner le service dont vous avez besoin pour prendre votre ticket immédiatement.
+              Recherchez ou scannez le service dont vous avez besoin pour prendre votre ticket immédiatement.
             </p>
           </motion.div>
 
-          <div className="relative mb-8">
-            {/* Icône de recherche à gauche */}
+          {/* Barre de recherche */}
+          <div className="relative mb-6">
             <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-
             <Input
               placeholder="Rechercher un service..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
             />
-
-            {/* Icône de scan à droite */}
             <button
               className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
               onClick={onScanQR}
@@ -812,89 +786,155 @@ router.replace(window.location.pathname, { scroll: false })
             </button>
           </div>
 
-          {/* CORRIGÉ : initial conditionné par isMounted, comme pour le Hero — évite que
-              cette grille reste invisible (opacity:0) à cause d'un souci d'hydratation
-              alors que les cartes existent déjà dans le DOM et restent cliquables */}
-          <motion.div
-            variants={containerVariants}
-            initial={isMounted ? "hidden" : false}
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
-          >
-            {filteredServices
-              .map((service) => ({
-                ...service,
-                isActive: servicesWithStatus.find(s => s.id === service.id)?.isActive ?? service.isActive
-              }))
-              .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
-              .map((service) => {
-                const hasTicketHere = hasActiveTicketForService(service.id)
-                return (
-                  <motion.div key={service.id} variants={itemVariants}>
-                    <Card
-                      className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${service.isActive && !hasTicketHere
-                          ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
-                          : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
-                        }`}
-                      onClick={() => handleOpenTicketModal(service)}
-                    >
-                      <CardContent className="p-5 flex flex-col h-full justify-between">
-                        <div>
-                          <div className="flex items-start justify-between mb-3">
-                            <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${service.isActive && !hasTicketHere
-                                ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
-                                : "bg-muted text-muted-foreground"
-                              }`}>
-                              <DynamicIcon name={service.icon} className="size-5" />
-                            </div>
-                            <Badge
-                              variant={hasTicketHere ? "default" : service.isActive ? "outline" : "destructive"}
-                              className={hasTicketHere ? "text-xs bg-amber-500 text-white border-none" : "text-xs"}
-                            >
-                              {hasTicketHere
-                                ? "Ticket actif"
-                                : service.isActive
-                                  ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
-                                  : "Fermé"
-                              }
-                            </Badge>
-                          </div>
-                          <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
-                          <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Clock className="size-4" />
-                            <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
-                          </div>
-                          {service.isActive && !hasTicketHere ? (
-                            <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                              Prendre ticket <ChevronRight className="size-4" />
-                            </span>
-                          ) : hasTicketHere ? (
-                            <span className="text-xs font-medium text-amber-600">Déjà en cours</span>
-                          ) : (
-                            <span className="text-xs font-medium text-destructive">Fermé</span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                )
-              })}
-          </motion.div>
-
-          <div className="text-center mt-8">
-            <Button variant="outline" size="lg" onClick={() => onNavigate("services")} className="gap-2 rounded-xl">
-              Voir tous les services <ArrowRight className="size-4" />
-            </Button>
+          {/* Compteur de résultats + numéro de page */}
+          <div className="flex items-center justify-between mb-5">
+            <p className="text-sm text-muted-foreground">
+              {filteredAndSortedServices.length} service{filteredAndSortedServices.length !== 1 ? "s" : ""}
+              {searchQuery ? ` pour "${searchQuery}"` : " disponibles"}
+            </p>
+            {totalPages > 1 && (
+              <p className="text-sm text-muted-foreground">
+                Page {currentPage} / {totalPages}
+              </p>
+            )}
           </div>
+
+          {/* Grille paginée */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${currentPage}-${searchQuery}`}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 min-h-[300px]"
+            >
+              {paginatedServices.length === 0 ? (
+                <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+                  <Search className="size-10 opacity-30" />
+                  <p className="text-base font-medium">Aucun service trouvé</p>
+                  <p className="text-sm">Essayez un autre mot-clé</p>
+                </div>
+              ) : (
+                paginatedServices.map((service) => {
+                  const hasTicketHere = hasActiveTicketForService(service.id)
+                  return (
+                    <motion.div
+                      key={service.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Card
+                        className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${
+                          service.isActive && !hasTicketHere
+                            ? "cursor-pointer border-transparent hover:border-primary hover:shadow-lg"
+                            : "opacity-65 border-border bg-muted/20 cursor-not-allowed"
+                        }`}
+                        onClick={() => handleOpenTicketModal(service)}
+                      >
+                        <CardContent className="p-5 flex flex-col h-full justify-between">
+                          <div>
+                            <div className="flex items-start justify-between mb-3">
+                              <div className={`flex size-12 items-center justify-center rounded-xl transition-colors ${
+                                service.isActive && !hasTicketHere
+                                  ? "bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground"
+                                  : "bg-muted text-muted-foreground"
+                              }`}>
+                                <DynamicIcon name={service.icon} className="size-5" />
+                              </div>
+                              <Badge
+                                variant={hasTicketHere ? "default" : service.isActive ? "outline" : "destructive"}
+                                className={hasTicketHere ? "text-xs bg-amber-500 text-white border-none" : "text-xs"}
+                              >
+                                {hasTicketHere
+                                  ? "Ticket actif"
+                                  : service.isActive
+                                    ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
+                                    : "Fermé"
+                                }
+                              </Badge>
+                            </div>
+                            <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
+                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Clock className="size-4" />
+                              <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                            </div>
+                            {service.isActive && !hasTicketHere ? (
+                              <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                                Prendre ticket <ChevronRight className="size-4" />
+                              </span>
+                            ) : hasTicketHere ? (
+                              <span className="text-xs font-medium text-amber-600">Déjà en cours</span>
+                            ) : (
+                              <span className="text-xs font-medium text-destructive">Fermé</span>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )
+                })
+              )}
+            </motion.div>
+          </AnimatePresence>
+
+          {/* ── Pagination ── */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-3 mt-10">
+              {/* Précédent */}
+              <button
+                onClick={() => goToPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <ChevronRight className="size-4 rotate-180" /> Précédent
+              </button>
+
+              {/* Numéros de pages */}
+              <div className="flex items-center gap-2">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => goToPage(page)}
+                    className={`size-9 rounded-xl text-sm font-semibold transition-all ${
+                      page === currentPage
+                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
+                        : "border-2 border-border text-muted-foreground hover:border-primary hover:text-primary"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+              </div>
+
+              {/* Suivant */}
+              <button
+                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                Suivant <ChevronRight className="size-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Lien "Voir tous" uniquement si pas de pagination */}
+          {/* {totalPages <= 1 && (
+            <div className="text-center mt-8">
+              <Button variant="outline" size="lg" onClick={() => onNavigate("services")} className="gap-2 rounded-xl">
+                Voir tous les services <ArrowRight className="size-4" />
+              </Button>
+            </div>
+          )} */}
         </div>
       </section>
 
-      {/* DIALOG : SAISIE INFOS PATIENT */}
+      {/* ───────────── DIALOG : SAISIE INFOS PATIENT ───────────── */}
       <Dialog open={showTicketModal} onOpenChange={handleCloseTicketModal}>
         <DialogContent className="sm:max-w-md rounded-2xl bg-card">
           <DialogHeader>
@@ -944,7 +984,7 @@ router.replace(window.location.pathname, { scroll: false })
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG : TICKET ENREGISTRÉ AVEC SUCCÈS */}
+      {/* ───────────── DIALOG : SUCCÈS ───────────── */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="sm:max-w-md text-center rounded-2xl bg-card">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -990,8 +1030,7 @@ router.replace(window.location.pathname, { scroll: false })
         />
       )}
 
-
-      {/* COMPOSANT WHY US */}
+      {/* ───────────── POURQUOI RANG+ ───────────── */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
@@ -1020,7 +1059,7 @@ router.replace(window.location.pathname, { scroll: false })
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
+      {/* ───────────── COMMENT ÇA MARCHE ───────────── */}
       <section className="px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
@@ -1046,7 +1085,7 @@ router.replace(window.location.pathname, { scroll: false })
         </div>
       </section>
 
-      {/* TESTIMONIALS */}
+      {/* ───────────── TÉMOIGNAGES ───────────── */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
@@ -1074,7 +1113,7 @@ router.replace(window.location.pathname, { scroll: false })
         </div>
       </section>
 
-      {/* CTA SECTION */}
+      {/* ───────────── CTA ───────────── */}
       <section className="px-6 py-16 lg:py-24">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="mx-auto max-w-4xl">
           <Card className="overflow-hidden border-0 bg-primary text-primary-foreground">
@@ -1096,6 +1135,7 @@ router.replace(window.location.pathname, { scroll: false })
         </motion.div>
       </section>
 
+      {/* ───────────── FOOTER ───────────── */}
       <footer id="contact-section" className="px-6 py-12 bg-foreground text-background">
         <div className="mx-auto max-w-4xl">
           <div className="grid gap-8 lg:grid-cols-3 mb-8">
@@ -1152,8 +1192,7 @@ router.replace(window.location.pathname, { scroll: false })
         </div>
       </footer>
 
-
-      {/* BOUTON FLOTTANT D'ACCÈS DIRECT AU TICKET ACTIF */}
+      {/* ───────────── BOUTON FLOTTANT ───────────── */}
       <AnimatePresence>
         {generatedTicket && !showTrackingModal && (
           <motion.div
