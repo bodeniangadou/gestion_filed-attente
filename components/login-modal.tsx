@@ -83,11 +83,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       return
     }
 
-    // Récupérer le profil (rôle + statut de bannissement) uniquement pour les
-    // vérifications ci-dessous. Le peuplement de `user` dans le context est
-    // désormais entièrement délégué à loadUserProfile(), déjà abonné à
-    // onAuthStateChange("SIGNED_IN") dans app-context.tsx — une seule source
-    // de vérité, plus de duplication ni de risque d'écrasement entre les deux.
+    
     const { data: profile, error: profileError } = await supabase
       .from("utilisateur")
       .select("role, est_banni")
