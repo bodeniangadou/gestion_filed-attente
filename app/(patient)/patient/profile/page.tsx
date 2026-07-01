@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { motion } from "framer-motion"
-import { Camera, User, Phone, LogOut, Check, UserCheck, Sparkles, Lock, Edit, Mail } from "lucide-react"
+import { Camera, User, Phone, Check, UserCheck, Lock, Edit, Mail } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -13,155 +13,132 @@ import {
   DialogTrigger,
   DialogDescription,
 } from "@/components/ui/dialog"
-import { supabase } from "@/lib/supabase" 
-import { toast } from "sonner" 
+import { supabase } from "@/lib/supabase"
+import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Field, FieldLabel } from "@/components/ui/field"
+import { FieldLabel } from "@/components/ui/field"
 import { useApp } from "@/lib/app-context"
 import Link from "next/link"
 
-export default function ProfileView() {
-  const { user, setUser, logout } = useApp() 
-  const [isEditing, setIsEditing] = useState(false)
-  const [passwords, setPasswords] = useState({ new: "", confirm: "" });
-  const [isUpdatingPass, setIsUpdatingPass] = useState(false);
-  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    firstName: "",
-    phone: "",
-  })
-  
-  const [showSaved, setShowSaved] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+// CORRIGÉ : logique de split nom/prénom unifiée
+// "Aminata Diallo" → firstName: "Aminata", name: "Diallo"
+// "Aminata Bah Diallo" → firstName: "Aminata Bah", name: "Diallo"
+// "Aminata" → firstName: "Aminata", name: ""
+function splitFullName(nom: string): { firstName: string; name: string } {
+  const parts = (nom || "").trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return { firstName: "", name: "" }
+  if (parts.length === 1) return { firstName: parts[0], name: "" }
+  const name = parts[parts.length - 1]
+  const firstName = parts.slice(0, -1).join(" ")
+  return { firstName, name }
+}
 
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        name: user.name || "",
-        firstName: user.firstName || "",
-        phone: user.phone || "",
-      })
-    }
-  }, [user])
+export default function ProfileView() {
+  const { user, setUser } = useApp()
+  const [isEditing, setIsEditing] = useState(false)
+  const [passwords, setPasswords] = useState({ new: "", confirm: "" })
+  const [isUpdatingPass, setIsUpdatingPass] = useState(false)
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
+  const [formData, setFormData] = useState({ name: "", firstName: "", phone: "" })
+  const fileInputRef = useRef<HTMLInputElement>(null)
+useEffect(() => {
+  if (user) {
+    // On reconstruit le nom complet depuis le context (qui split au premier mot)
+    // puis on re-split selon notre logique : dernier mot = nom, tout le reste = prénom
+    const fullName = [user.firstName, user.name].filter(Boolean).join(" ")
+    const { firstName, name } = splitFullName(fullName)
+    setFormData({
+      firstName,
+      name,
+      phone: user.phone || "",
+    })
+  }
+}, [user])
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) return
 
     if (formData.phone.length !== 8 || !/^\d+$/.test(formData.phone)) {
-      toast.error("Format invalide", { description: "Le numéro doit contenir exactement 8 chiffres." });
-      return;
+      toast.error("Format invalide", { description: "Le numéro doit contenir exactement 8 chiffres." })
+      return
     }
 
-    const { data: existingUser, error: checkError } = await supabase
+    const { data: existingUser } = await supabase
       .from("utilisateur")
       .select("id")
       .eq("telephone", formData.phone)
-      .neq("id", user.id) 
-      .single();
+      .neq("id", user.id)
+      .single()
 
     if (existingUser) {
-      toast.error("Numéro déjà utilisé", { description: "Ce numéro est déjà attribué à un autre utilisateur." });
-      return;
+      toast.error("Numéro déjà utilisé", { description: "Ce numéro est déjà attribué à un autre utilisateur." })
+      return
     }
+
+    const fullName = [formData.firstName, formData.name].filter(Boolean).join(" ")
 
     const { error } = await supabase
       .from("utilisateur")
-      .update({
-        nom: `${formData.firstName} ${formData.name}`,
-        telephone: formData.phone,
-      })
-      .eq("id", user.id);
+      .update({ nom: fullName, telephone: formData.phone })
+      .eq("id", user.id)
 
     if (error) {
-      toast.error("Erreur", { description: "Impossible de mettre à jour le profil." });
-      return;
+      toast.error("Erreur", { description: "Impossible de mettre à jour le profil." })
+      return
     }
 
-    setUser({
-      ...user,
-      name: formData.name,
-      firstName: formData.firstName,
-      phone: formData.phone,
-    });
-
-    setIsEditing(false);
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 2000);
-    toast.success("Profil mis à jour", { description: "Vos informations ont été enregistrées." });
-  };
+    setUser({ ...user, name: formData.name, firstName: formData.firstName, phone: formData.phone })
+    setIsEditing(false)
+    toast.success("Profil mis à jour", { description: "Vos informations ont été enregistrées." })
+  }
 
   const handleCancel = () => {
     if (user) {
-      setFormData({
-        name: user.name || "",
-        firstName: user.firstName || "",
-        phone: user.phone || "",
-      })
+      setFormData({ name: user.name || "", firstName: user.firstName || "", phone: user.phone || "" })
     }
     setIsEditing(false)
   }
 
   const handlePasswordUpdate = async () => {
     if (passwords.new !== passwords.confirm) {
-      toast.error("Erreur", { description: "Les mots de passe ne correspondent pas." });
-      return;
+      toast.error("Erreur", { description: "Les mots de passe ne correspondent pas." })
+      return
     }
     if (passwords.new.length < 6) {
-      toast.error("Trop court", { description: "Le mot de passe doit faire au moins 6 caractères." });
-      return;
+      toast.error("Trop court", { description: "Le mot de passe doit faire au moins 6 caractères." })
+      return
     }
-
-    setIsUpdatingPass(true);
-    const { error } = await supabase.auth.updateUser({ password: passwords.new });
-    setIsUpdatingPass(false);
-
+    setIsUpdatingPass(true)
+    const { error } = await supabase.auth.updateUser({ password: passwords.new })
+    setIsUpdatingPass(false)
     if (error) {
-      toast.error("Erreur", { description: error.message });
+      toast.error("Erreur", { description: error.message })
     } else {
-      toast.success("Succès", { description: "Votre mot de passe a été mis à jour." });
-      setIsPasswordModalOpen(false); 
-      setPasswords({ new: "", confirm: "" }); 
+      toast.success("Succès", { description: "Votre mot de passe a été mis à jour." })
+      setIsPasswordModalOpen(false)
+      setPasswords({ new: "", confirm: "" })
     }
-  };
+  }
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-
+    const file = e.target.files?.[0]
+    if (!file || !user) return
     try {
-      const fileName = `${user.id}_${Date.now()}.jpg`; 
-
+      const fileName = `${user.id}_${Date.now()}.jpg`
       const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, file, { 
-          upsert: true,
-          contentType: file.type 
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      
-      const newPublicUrl = `${data.publicUrl}?t=${new Date().getTime()}`;
-
-      const { error: updateError } = await supabase
-        .from("utilisateur")
-        .update({ photo_url: data.publicUrl }) 
-        .eq("id", user.id);
-
-      if (updateError) throw updateError;
-
-      setUser({ ...user, photo: newPublicUrl });
-      
-      toast.success("Succès", { description: "Votre photo a été mise à jour." });
-
-    } catch (error) {
-      console.error("Erreur complète :", error);
-      toast.error("Erreur", { description: "Impossible de modifier la photo." });
+        .from("avatars")
+        .upload(fileName, file, { upsert: true, contentType: file.type })
+      if (uploadError) throw uploadError
+      const { data } = supabase.storage.from("avatars").getPublicUrl(fileName)
+      const newPublicUrl = `${data.publicUrl}?t=${Date.now()}`
+      await supabase.from("utilisateur").update({ photo_url: data.publicUrl }).eq("id", user.id)
+      setUser({ ...user, photo: newPublicUrl })
+      toast.success("Photo mise à jour")
+    } catch {
+      toast.error("Erreur", { description: "Impossible de modifier la photo." })
     }
-  };
+  }
 
   const roleLabels: Record<string, string> = {
     visitor: "Visiteur",
@@ -172,22 +149,20 @@ export default function ProfileView() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center p-6">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }} 
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md text-center space-y-6 bg-white rounded-3xl p-8 shadow-2xl shadow-emerald-500/10 border border-emerald-100"
+          className="w-full max-w-md text-center space-y-6 bg-card rounded-3xl p-8 shadow-xl border border-border"
         >
-          <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
+          <div className="mx-auto flex size-20 items-center justify-center rounded-full bg-emerald-500 shadow-lg">
             <UserCheck className="size-10 text-white" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold text-gray-800">Session expirée</h2>
-            <p className="text-gray-600">
-              Veuillez vous connecter pour accéder à votre espace personnel.
-            </p>
+            <h2 className="text-2xl font-bold text-foreground">Session expirée</h2>
+            <p className="text-muted-foreground">Veuillez vous connecter pour accéder à votre espace personnel.</p>
           </div>
-          <Button asChild className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 rounded-2xl">
+          <Button asChild className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl">
             <Link href="/">Retour à l'accueil</Link>
           </Button>
         </motion.div>
@@ -196,89 +171,64 @@ export default function ProfileView() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50/50 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl">
-        
-        {/* Toast de succès */}
-        {/* {showSaved && (
-          <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.9 }}
-            className="flex items-center gap-2 rounded-xl bg-emerald-500 p-2.5 mb-3 text-white shadow-lg shadow-emerald-500/30"
-          >
-            <div className="rounded-full bg-white/20 p-1">
-              <Check className="size-3.5" />
-            </div>
-            <span className="font-medium text-xs">✅ Modifications enregistrées avec succès !</span>
-          </motion.div>
-        )} */}
+    // CORRIGÉ : plus de double centrage — s'étale dans l'espace dispo après la sidebar
+    // APRÈS
+<div className="min-h-screen bg-background">
+  <div className="max-w-3xl px-6 py-8">
+    <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600" />
 
-        <Card className="border-0 shadow-2xl shadow-emerald-500/10 rounded-2xl overflow-hidden">
-          {/* Barre décorative */}
-          <div className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600"></div>
-          
           <CardContent className="p-6">
-            
-            {/* ===== TITRE "MON PROFIL" + BOUTON MODIFIER ===== */}
+
+            {/* Titre + bouton modifier */}
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
-                <div className="bg-emerald-500 text-white p-1.5 rounded-lg shadow-lg shadow-emerald-500/30">
+                <div className="bg-emerald-500 text-white p-1.5 rounded-lg">
                   <User className="size-4" />
                 </div>
-                <h1 className="text-lg font-bold text-gray-800">Mon Profil</h1>
+                <h1 className="text-lg font-bold text-foreground">Mon profil</h1>
               </div>
-              
               {!isEditing && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => setIsEditing(true)}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg font-medium shadow-lg shadow-emerald-500/30 transition-all text-xs flex items-center gap-1.5"
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-1.5 rounded-lg font-medium text-xs flex items-center gap-1.5 transition-colors"
                 >
-                  <Edit className="size-3" />
-                  Modifier
+                  <Edit className="size-3" /> Modifier
                 </motion.button>
               )}
             </div>
 
-            {/* ===== AVATAR CENTRÉ ===== */}
+            {/* Avatar */}
             <div className="flex flex-col items-center mb-5">
               <div className="relative">
-                <div className="relative w-24 h-24 rounded-full border-3 border-emerald-200 shadow-lg overflow-hidden">
+                <div className="relative w-24 h-24 rounded-full border-2 border-emerald-200 overflow-hidden">
                   {user.photo ? (
-                    <img src={user.photo} alt="Profile" className="w-full h-full object-cover" />
+                    <img src={user.photo} alt="Profil" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center text-3xl text-white font-bold">
-                      {user.firstName?.charAt(0).toUpperCase() || ""}{user.name?.charAt(0).toUpperCase() || ""}
+                      {user.firstName?.charAt(0).toUpperCase() || ""}
+                      {user.name?.charAt(0).toUpperCase() || ""}
                     </div>
                   )}
                 </div>
-
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="absolute -bottom-1 -right-1 bg-white text-emerald-600 rounded-full p-1.5 shadow-lg shadow-emerald-500/30 transition-all hover:scale-110"
+                  className="absolute -bottom-1 -right-1 bg-card text-emerald-600 rounded-full p-1.5 shadow-lg hover:scale-110 transition-transform border border-border"
                 >
                   <Camera className="size-3.5" />
                 </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  className="hidden"
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
               </div>
 
               <div className="text-center mt-3">
-                <h2 className="text-lg font-bold text-gray-800">
-                  {user.firstName} {user.name}
-                </h2>
-                <Badge className="px-3 py-0.5 bg-emerald-500 text-white border-0 rounded-full text-xs shadow-sm shadow-emerald-500/30 mt-1">
-                  <span className="relative flex items-center gap-1.5 text-[10px]">
+                <h2 className="text-lg font-bold text-foreground">{user.firstName} {user.name}</h2>
+                <Badge className="px-3 py-0.5 bg-emerald-500 text-white border-0 rounded-full text-xs mt-1">
+                  <span className="flex items-center gap-1.5 text-[10px]">
                     <span className="relative flex size-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
-                      <span className="relative inline-flex size-1.5 rounded-full bg-white"></span>
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                      <span className="relative inline-flex size-1.5 rounded-full bg-white" />
                     </span>
                     {roleLabels[user.role] || user.role}
                   </span>
@@ -286,19 +236,20 @@ export default function ProfileView() {
               </div>
             </div>
 
-            {/* ===== TRAIT SÉPARATEUR ===== */}
+            {/* Séparateur */}
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-gradient-to-r from-transparent to-emerald-200"></div>
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent to-emerald-200" />
               <span className="text-emerald-300 text-[10px]">✦</span>
-              <div className="flex-1 h-px bg-gradient-to-l from-transparent to-emerald-200"></div>
+              <div className="flex-1 h-px bg-gradient-to-l from-transparent to-emerald-200" />
             </div>
 
-            {/* ===== FORMULAIRE ===== */}
+            {/* Formulaire */}
             <div className="space-y-2.5">
+
               {/* Prénom + Nom */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div>
-                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 mb-0.5">
+                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground mb-0.5">
                     <div className="bg-emerald-100 p-0.5 rounded">
                       <User className="size-3 text-emerald-500" />
                     </div>
@@ -308,12 +259,11 @@ export default function ProfileView() {
                     value={formData.firstName}
                     onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                     disabled={!isEditing}
-                    className="h-8 text-sm border-gray-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-400/20 transition-all rounded-lg disabled:bg-gray-50 disabled:opacity-70"
+                    className="h-8 text-sm"
                   />
                 </div>
-                
                 <div>
-                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 mb-0.5">
+                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground mb-0.5">
                     <div className="bg-emerald-100 p-0.5 rounded">
                       <User className="size-3 text-emerald-500" />
                     </div>
@@ -323,15 +273,15 @@ export default function ProfileView() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     disabled={!isEditing}
-                    className="h-8 text-sm border-gray-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-400/20 transition-all rounded-lg disabled:bg-gray-50 disabled:opacity-70"
+                    className="h-8 text-sm"
                   />
                 </div>
               </div>
 
-                           {/* Téléphone + Email sur la même ligne */}
+              {/* Téléphone + Email */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                 <div>
-                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 mb-0.5">
+                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground mb-0.5">
                     <div className="bg-emerald-100 p-0.5 rounded">
                       <Phone className="size-3 text-emerald-500" />
                     </div>
@@ -341,71 +291,70 @@ export default function ProfileView() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     disabled={!isEditing}
-                    placeholder="+223 XX XX XX XX"
-                    className="h-8 text-sm border-gray-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-400/20 transition-all rounded-lg disabled:bg-gray-50 disabled:opacity-70"
+                    placeholder="76XXXXXX"
+                    className="h-8 text-sm"
                   />
                 </div>
-                
                 <div>
-                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600 mb-0.5">
+                  <FieldLabel className="flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground mb-0.5">
                     <div className="bg-emerald-100 p-0.5 rounded">
                       <Mail className="size-3 text-emerald-500" />
                     </div>
                     Email
                   </FieldLabel>
                   <Input
-                    value={user.email || "email@exemple.com"}
+                    value={user.email || ""}
                     disabled
-                    className="h-8 text-sm border-gray-200 bg-gray-50 rounded-lg text-gray-500"
+                    className="h-8 text-sm bg-muted"
                   />
                 </div>
               </div>
 
-              {/* Bouton "Changer mot de passe" - taille moyenne */}
+              {/* Actions */}
               {!isEditing ? (
-                <div className="pt-1 flex justify-start">
+                <div className="pt-1">
                   <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
                     <DialogTrigger asChild>
-                      <Button 
-                        variant="outline" 
-                        className="h-7 px-5 text-xs border-2 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50 text-emerald-600 font-medium rounded-lg transition-all"
+                      <Button
+                        variant="outline"
+                        className="h-7 px-5 text-xs border-2 border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50 text-emerald-600 font-medium rounded-lg"
                       >
-                         Changer le mot de passe
+                        Changer le mot de passe
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="sm:max-w-md rounded-2xl border-emerald-100 shadow-2xl">
+                    <DialogContent className="sm:max-w-md rounded-2xl">
                       <DialogHeader>
-                        <DialogTitle className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <DialogTitle className="text-lg font-bold text-foreground flex items-center gap-2">
                           <span className="bg-emerald-100 p-1.5 rounded-lg">
                             <Lock className="size-4 text-emerald-500" />
                           </span>
                           Changer le mot de passe
                         </DialogTitle>
-                        <DialogDescription className="text-gray-500 text-sm">
-                          Entrez votre nouveau mot de passe (minimum 6 caractères)
+                        <DialogDescription className="text-muted-foreground text-sm">
+                          Minimum 6 caractères.
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-3 py-3">
-                        <Input 
-                          type="password" 
-                          placeholder="Nouveau mot de passe" 
-                          value={passwords.new} 
-                          onChange={(e) => setPasswords({...passwords, new: e.target.value})}
-                          className="h-10 text-sm rounded-lg border-gray-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-400/20"
+                        <Input
+                          type="password"
+                          placeholder="Nouveau mot de passe"
+                          value={passwords.new}
+                          onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                          className="h-10 text-sm"
                         />
-                        <Input 
-                          type="password" 
-                          placeholder="Confirmer le nouveau mot de passe" 
-                          value={passwords.confirm} 
-                          onChange={(e) => setPasswords({...passwords, confirm: e.target.value})}
-                          className="h-10 text-sm rounded-lg border-gray-200 focus:border-emerald-400 focus:ring-4 focus:ring-emerald-400/20"
+                        <Input
+                          type="password"
+                          placeholder="Confirmer le nouveau mot de passe"
+                          value={passwords.confirm}
+                          onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                          className="h-10 text-sm"
                         />
-                        <Button 
-                          className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 rounded-lg font-medium text-sm" 
-                          onClick={handlePasswordUpdate} 
+                        <Button
+                          className="w-full h-10 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium text-sm"
+                          onClick={handlePasswordUpdate}
                           disabled={isUpdatingPass}
                         >
-                          {isUpdatingPass ? "Mise à jour..." : "✅ Confirmer"}
+                          {isUpdatingPass ? "Mise à jour..." : "Confirmer"}
                         </Button>
                       </div>
                     </DialogContent>
@@ -413,34 +362,30 @@ export default function ProfileView() {
                 </div>
               ) : (
                 <div className="flex gap-2 pt-1">
-                  <Button 
-                    variant="outline" 
-                    className="flex-1 h-7 text-xs border-gray-300 hover:bg-gray-50 rounded-lg font-medium"
+                  <Button
+                    variant="outline"
+                    className="flex-1 h-7 text-xs rounded-lg"
                     onClick={handleCancel}
                   >
                     Annuler
                   </Button>
-                  <Button 
-                    className="flex-1 h-7 bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 rounded-lg font-medium transition-all text-xs flex items-center justify-center gap-1"
+                  <Button
+                    className="flex-1 h-7 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs flex items-center justify-center gap-1"
                     onClick={handleSave}
                   >
-                    <Check className="size-3" />
-                    Enregistrer
+                    <Check className="size-3" /> Enregistrer
                   </Button>
                 </div>
               )}
             </div>
 
-            {/* ===== SÉPARATEUR ===== */}
-            <div className="flex items-center gap-3 mt-3">
-              <div className="flex-1 h-px bg-gradient-to-r from-transparent to-emerald-200"></div>
+            {/* Séparateur bas */}
+            <div className="flex items-center gap-3 mt-4">
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent to-emerald-200" />
               <span className="text-emerald-300 text-[10px]">✦</span>
-              <div className="flex-1 h-px bg-gradient-to-l from-transparent to-emerald-200"></div>
+              <div className="flex-1 h-px bg-gradient-to-l from-transparent to-emerald-200" />
             </div>
 
-          
-
-          
           </CardContent>
         </Card>
       </div>

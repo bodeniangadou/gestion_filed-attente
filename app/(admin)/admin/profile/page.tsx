@@ -172,10 +172,10 @@ useEffect(() => {
 
   return (
     // CORRIGÉ : plus de double centrage — s'étale dans l'espace dispo après la sidebar
-    // APRÈS
-<div className="min-h-screen bg-background">
-  <div className="max-w-3xl px-6 py-8">
-    <Card className="border-0 shadow-sm rounded-2xl overflow-hidden">
+    <div className="min-h-screen bg-background px-4 py-8 lg:px-8">
+      <div className="mx-auto max-w-2xl">
+
+        <Card className="border-0 shadow-xl rounded-2xl overflow-hidden">
           <div className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600" />
 
           <CardContent className="p-6">
