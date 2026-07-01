@@ -42,16 +42,19 @@ export default function ProfileView() {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false)
   const [formData, setFormData] = useState({ name: "", firstName: "", phone: "" })
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        name: user.name || "",
-        firstName: user.firstName || "",
-        phone: user.phone || "",
-      })
-    }
-  }, [user])
+useEffect(() => {
+  if (user) {
+    // On reconstruit le nom complet depuis le context (qui split au premier mot)
+    // puis on re-split selon notre logique : dernier mot = nom, tout le reste = prénom
+    const fullName = [user.firstName, user.name].filter(Boolean).join(" ")
+    const { firstName, name } = splitFullName(fullName)
+    setFormData({
+      firstName,
+      name,
+      phone: user.phone || "",
+    })
+  }
+}, [user])
 
   const handleSave = async () => {
     if (!user) return
