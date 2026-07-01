@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { supabase } from "@/lib/supabase"
-import { useRouter, useSearchParams } from "next/navigation"
 import * as LucideIcons from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -160,9 +159,6 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
 
-  const searchParams = useSearchParams()
-  const router = useRouter()
-
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [phoneError, setPhoneError] = useState<string | null>(null)
 
@@ -273,33 +269,33 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     setSelectedService(service)
     setShowTicketModal(true)
   }
+useEffect(() => {
+  if (services.length === 0 || selectedService) return
 
-  useEffect(() => {
-    if (services.length === 0 || selectedService) return
+  const serviceId = new URLSearchParams(window.location.search).get("service") 
+    || new URLSearchParams(window.location.search).get("scan")
+  if (!serviceId) return
 
-    const serviceId = searchParams.get("service") || searchParams.get("scan")
-    if (!serviceId) return
+  const serviceToSelect = services.find(s => s.id === serviceId)
+  if (!serviceToSelect) return
 
-    const serviceToSelect = services.find(s => s.id === serviceId)
-    if (!serviceToSelect) return
+  const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
 
-    const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
+  if (!isReallyActive) {
+    toast.error("Service indisponible", {
+      description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement.`
+    })
+  } else if (hasActiveTicketForService(serviceId)) {
+    toast.error("Ticket déjà en cours", {
+      description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
+    })
+  } else {
+    handleOpenTicketModal(serviceToSelect)
+  }
 
-    if (!isReallyActive) {
-      toast.error("Service indisponible", {
-        description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement (fermé, hors horaires, ou aucun guichet actif).`
-      })
-    } else if (hasActiveTicketForService(serviceId)) {
-      toast.error("Ticket déjà en cours", {
-        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
-      })
-    } else {
-      handleOpenTicketModal(serviceToSelect)
-    }
-
-    router.replace(window.location.pathname, { scroll: false })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services, servicesWithStatus, selectedService, trackedActiveTickets, searchParams])
+  window.history.replaceState({}, document.title, window.location.pathname)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [services, servicesWithStatus, selectedService, trackedActiveTickets])
 
   const activeServices = services.filter(s => s.isActive)
   const avgWaitTime = activeServices.length > 0

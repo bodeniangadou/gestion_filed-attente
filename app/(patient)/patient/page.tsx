@@ -171,7 +171,7 @@ export default function PatientPage() {
                       <div>
                         <p className="font-bold">C'est votre tour !</p>
                         <p className="text-sm text-white/90">
-                          Présentez-vous au <span className="underline font-semibold">{formatCounterName(selectedTicket.counterName)}</span>
+                          Présentez-vous au <span className="underline font-semibold">{formatCounterName(selectedTicket.counterName ?? "")}</span>
                         </p>
                       </div>
                     </motion.div>
