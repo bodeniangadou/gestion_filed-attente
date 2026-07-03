@@ -255,32 +255,34 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   }
 
   // ── CORRECTION BUG TOAST : on vérifie que le paramètre n'a pas déjà été traité
+// ── CORRECTION BUG TOAST / RÉPÉTITION
   useEffect(() => {
-    const serviceId = searchParams.get("scan") || searchParams.get("service")
+    const serviceId = searchParams.get("scan") || searchParams.get("service");
 
-    if (!serviceId) return
-    if (services.length === 0) return
+    if (!serviceId) return;
+    if (services.length === 0) return;
 
-    // Si ce paramètre a déjà été traité lors de cette session de navigation, on ignore
-    if (handledScanParam.current === serviceId) return
+    if (handledScanParam.current === serviceId) return;
 
-    const targetService = services.find(s => s.id === serviceId)
-    if (!targetService) return
+    const targetService = services.find((s) => s.id === serviceId);
+    if (!targetService) return;
 
-    // On marque ce paramètre comme traité AVANT de lancer l'action
-    handledScanParam.current = serviceId
+    handledScanParam.current = serviceId;
 
-    // On nettoie l'URL immédiatement pour éviter toute réexécution
-    router.replace(window.location.pathname)
+    router.replace(window.location.pathname);
 
-    const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents)
+    const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents);
+    
     if (isEffectivelyActive) {
-      handleTakeTicket(targetService)
+      handleTakeTicket(targetService);
     } else {
-      toast.error("Service indisponible", { description: closingReason })
+      toast.error("Service indisponible", { description: closingReason });
     }
-
-  }, [searchParams, services, counters, agents, handleTakeTicket, router])
+    
+    return () => {
+        handledScanParam.current = null;
+    };
+  }, [searchParams, services, counters, agents, handleTakeTicket, router]);
 
   useEffect(() => {
     if (showScannerModal && services.length > 0) {
