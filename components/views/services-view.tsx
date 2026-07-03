@@ -15,11 +15,13 @@ import { Html5Qrcode } from "html5-qrcode"
 import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
 
-function generateUniqueTicketCode(servicePrefix: string): string {
-  // Basé sur timestamp + random pour éviter les doublons même si la file repart à 0
-  const ts = Date.now().toString(36).toUpperCase().slice(-4)
-  const rand = Math.floor(Math.random() * 100).toString().padStart(2, "0")
-  return `${servicePrefix}-${ts}${rand}`
+function generateTicketCode(servicePrefix: string, totalTicketsInService: number): string {
+  // On incrémente de 1 pour le nouveau ticket
+  const nextNumber = totalTicketsInService + 1;
+  // .padStart(3, '0') transforme 1 en "001", 12 en "012", etc.
+  const formattedNumber = nextNumber.toString().padStart(3, '0');
+  
+  return `${servicePrefix.toUpperCase()}${formattedNumber}`;
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -160,10 +162,18 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           toast.error("Demande refusée", { description: "Un ticket actif existe déjà sur le serveur." })
           return
         }
+        const today = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+const { count: totalTicketsInService, error: countError } = await supabase
+  .from("ticket")
+  .select("id", { count: 'exact', head: true })
+  .eq("id_service", service.id)
+  .gte("created_at", today);;
 
+if (countError) throw countError;
         const currentPosition = calculateQueue(service.id, tickets) + 1
         const servicePrefix = service.name.substring(0, 1).toUpperCase()
-        const ticketNumber = generateUniqueTicketCode(servicePrefix)
+        const nextNumber = (totalTicketsInService || 0) + 1;
+const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`;
 
         const { data, error } = await supabase
           .from("ticket")
@@ -197,65 +207,60 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     }
   }, [services, counters, agents, tickets, user, isAdmin, isRealPatient, localTakenServices, fetchTickets])
 
-  const handleSubmitForm = async () => {
-    if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
+const handleSubmitForm = async () => {
+  if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
 
-    const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
+  const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
 
-    try {
-      const { data: existingActiveAnonTickets, error: checkAnonError } = await supabase
-        .from("ticket")
-        .select("id")
-        .ilike("patient_nom", fullFormName)
-        .eq("id_service", selectedService.id)
-        .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
+  try {
+    // 1. Calculer le total du jour pour ce service
+    const today = new Date().toISOString().split('T')[0];
+    const { count: totalToday, error: countError } = await supabase
+      .from("ticket")
+      .select("id", { count: 'exact', head: true })
+      .eq("id_service", selectedService.id)
+      .gte("created_at", today);
 
-      if (checkAnonError) throw checkAnonError
+    if (countError) throw countError;
 
-      if (existingActiveAnonTickets && existingActiveAnonTickets.length > 0 && !isAdmin) {
-        toast.error("Nom déjà enregistré", {
-          description: `Un ticket actif existe déjà au nom de ${fullFormName} pour ce service.`,
-        })
-        return
-      }
+    // 2. Générer le code séquentiel
+    const servicePrefix = selectedService.name.substring(0, 1).toUpperCase();
+    const nextNumber = (totalToday || 0) + 1;
+    const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`;
 
-      const currentPosition = calculateQueue(selectedService.id, tickets) + 1
-      const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
-      const ticketNumber = generateUniqueTicketCode(servicePrefix)
+    // 3. Insertion
+    const { data, error } = await supabase
+      .from("ticket")
+      .insert([{
+        code: ticketNumber,
+        id_service: selectedService.id,
+        id_guichet: selectedCounter.id,
+        id_patient_connecte: null,
+        statut: "waiting",
+        patient_nom: fullFormName,
+        position: (totalToday || 0) + 1 // Position logique
+      }])
+      .select()
+      .single()
 
-      const { data, error } = await supabase
-        .from("ticket")
-        .insert([{
-          code: ticketNumber,
-          id_service: selectedService.id,
-          id_guichet: selectedCounter.id,
-          id_patient_connecte: null,
-          statut: "waiting",
-          patient_nom: fullFormName,
-        }])
-        .select()
-        .single()
+    if (error) throw error;
+    
+    // ... reste de ta logique (fetchTickets, setSuccessModal, etc)
+    await fetchTickets();
+    if (!isAdmin) setLocalTakenServices(prev => [...prev, selectedService.id]);
+    setNewTicket({ code: data.code, service: selectedService.name, counterName: selectedCounter.name, position: (totalToday || 0) + 1 });
+    setShowTicketModal(false);
+    setShowSuccessModal(true);
+    setFormData({ nom: "", prenom: "" });
+    toast.success("Ticket créé !");
 
-      if (error) throw error
-
-      await fetchTickets()
-
-      if (!isAdmin) setLocalTakenServices(prev => [...prev, selectedService.id])
-
-      setNewTicket({ code: data.code, service: selectedService.name, counterName: selectedCounter.name, position: currentPosition })
-      setShowTicketModal(false)
-      setShowSuccessModal(true)
-      setFormData({ nom: "", prenom: "" })
-      toast.success("Ticket créé !")
-
-    } catch (err) {
-      console.error(err)
-      toast.error("Erreur", { description: "Échec de la validation du ticket." })
-    }
+  } catch (err) {
+    console.error(err);
+    toast.error("Erreur", { description: "Échec de la validation du ticket." });
   }
+}
 
-  // ── CORRECTION BUG TOAST : on vérifie que le paramètre n'a pas déjà été traité
-// ── CORRECTION BUG TOAST / RÉPÉTITION
+
   useEffect(() => {
     const serviceId = searchParams.get("scan") || searchParams.get("service");
 
