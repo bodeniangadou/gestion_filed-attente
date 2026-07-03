@@ -11,13 +11,10 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Field, FieldLabel, FieldGroup } from "@/components/ui/field"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Html5Qrcode } from "html5-qrcode" 
+import { Html5Qrcode } from "html5-qrcode"
 import { toast } from "sonner"
-
 import { useApp, Service, Ticket } from "@/lib/app-context"
 
-// FORMAT UNIQUE CLAIR : Préfixe (1 lettre) - Numéro de position (ex: P-003)
-// Prend le préfixe déjà extrait (1 lettre) et la position dans la file.
 function generateUniqueTicketCode(servicePrefix: string, position: number): string {
   return `${servicePrefix}-${String(position).padStart(3, "0")}`
 }
@@ -35,13 +32,8 @@ interface ServicesViewProps {
   isAdmin?: boolean
 }
 
-const calculateQueue = (serviceId: string, allTickets: Ticket[]) => {
-  return allTickets.filter(t => {
-    const matchesService = t.service?.id === serviceId
-    const isWaiting = t.statut === "waiting"
-    return matchesService && isWaiting
-  }).length
-}
+const calculateQueue = (serviceId: string, allTickets: Ticket[]) =>
+  allTickets.filter(t => t.service?.id === serviceId && t.statut === "waiting").length
 
 const isWithinOperatingHours = (openTime: string, closeTime: string) => {
   const now = new Date()
@@ -49,24 +41,44 @@ const isWithinOperatingHours = (openTime: string, closeTime: string) => {
   return currentTime >= openTime && currentTime <= closeTime
 }
 
-// CORRIGÉ : même extraction robuste que LandingScannerModal (slash final, espaces,
-// encodage URL, ou identifiant brut directement scanné)
 function extractServiceKey(decodedText: string): string {
   const cleaned = decodedText.trim()
-
   const match = cleaned.match(/\/scanner\/([^/?#]+)/)
-  if (match) {
-    return decodeURIComponent(match[1]).trim()
-  }
-
+  if (match) return decodeURIComponent(match[1]).trim()
   if (cleaned.includes("?")) {
-    const queryPart = cleaned.split("?")[1]
-    const urlParams = new URLSearchParams(queryPart)
+    const urlParams = new URLSearchParams(cleaned.split("?")[1])
     const fromQuery = urlParams.get("service") || urlParams.get("scan")
     if (fromQuery) return fromQuery.trim()
   }
-
   return cleaned
+}
+
+function getServiceAvailability(
+  service: Service,
+  counters: ReturnType<typeof useApp>["counters"],
+  agents: ReturnType<typeof useApp>["agents"]
+): { isEffectivelyActive: boolean; closingReason: string } {
+  if (!service.isActive) return { isEffectivelyActive: false, closingReason: "Fermé" }
+
+  const isTimeOpen = isWithinOperatingHours(service.openTime, service.closeTime)
+  if (!isTimeOpen) return { isEffectivelyActive: false, closingReason: "Hors Horaires" }
+
+  
+  const hasAvailableAgent = counters.some(
+    counter =>
+      counter.serviceId === service.id &&
+      counter.isActive &&
+      agents.some(
+        agent =>
+          agent.id === (counter as any).id_agent_actuel &&
+          agent.isOnline &&
+          !agent.est_banni
+      )
+  )
+
+  if (!hasAvailableAgent) return { isEffectivelyActive: false, closingReason: "Aucun Guichet Dispo" }
+
+  return { isEffectivelyActive: true, closingReason: "" }
 }
 
 export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
@@ -79,13 +91,10 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [formData, setFormData] = useState({ nom: "", prenom: "" })
-  
   const [newTicket, setNewTicket] = useState<{ code: string; service: string; counterName?: string; position?: number } | null>(null)
-  
   const [showScannerModal, setShowScannerModal] = useState(false)
   const [scannerError, setScannerError] = useState<string | null>(null)
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
-
   const [localTakenServices, setLocalTakenServices] = useState<string[]>([])
 
   const filteredServices = services.filter(service =>
@@ -96,56 +105,38 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const isRealPatient = user && user.role?.toLowerCase() === "patient"
 
   const handleTakeTicket = async (service: Service) => {
-    if (!service.isActive) {
-      toast.error("Service fermé", { description: "Ce service est actuellement désactivé." })
+    const { isEffectivelyActive, closingReason } = getServiceAvailability(service, counters, agents)
+
+    if (!isEffectivelyActive) {
+      toast.error("Service indisponible", { description: closingReason })
       return
     }
 
-    if (!isWithinOperatingHours(service.openTime, service.closeTime)) {
-      toast.error("Hors horaires", { 
-        description: `Ce service accueille les patients de ${service.openTime} à ${service.closeTime}.` 
-      })
-      return
-    }
-
-    const activeCounters = counters.filter(
-      (c) => c.serviceId === service.id && c.isActive
-    )
-
-    if (activeCounters.length === 0) {
-      toast.error("Service indisponible", {
-        description: `Le service ${service.name} n'a aucun guichet disponible pour le moment.`
-      })
-      return
-    }
+    const activeCounters = counters.filter(c => c.serviceId === service.id && c.isActive)
 
     if (!isAdmin && isRealPatient) {
-      const hasActiveTicket = localTakenServices.includes(service.id) || tickets.some(
-        (t) => t.userId === user.id && 
-               t.service?.id === service.id && 
-               (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
-      )
+      const hasActiveTicket =
+        localTakenServices.includes(service.id) ||
+        tickets.some(
+          t =>
+            t.userId === user.id &&
+            t.service?.id === service.id &&
+            (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
+        )
 
       if (hasActiveTicket) {
         toast.error("Demande refusée", {
-          description: `Vous avez déjà un ticket actif pour le service ${service.name}.`
+          description: `Vous avez déjà un ticket actif pour le service ${service.name}.`,
         })
-        return 
+        return
       }
     }
 
     let targetCounter = activeCounters[0]
     let minWaiting = Infinity
-
-    activeCounters.forEach((counter) => {
-      const waitingAtThisCounter = tickets.filter(
-        (t) => t.counterId === counter.id && t.statut === "waiting"
-      ).length
-
-      if (waitingAtThisCounter < minWaiting) {
-        minWaiting = waitingAtThisCounter
-        targetCounter = counter
-      }
+    activeCounters.forEach(counter => {
+      const w = tickets.filter(t => t.counterId === counter.id && t.statut === "waiting").length
+      if (w < minWaiting) { minWaiting = w; targetCounter = counter }
     })
 
     setSelectedService(service)
@@ -174,33 +165,24 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
         const { data, error } = await supabase
           .from("ticket")
-          .insert([
-            {
-              code: ticketNumber,
-              id_service: service.id,
-              id_guichet: targetCounter.id,
-              id_patient_connecte: user.id,
-              statut: "waiting",
-              patient_nom: `${user.firstName || ''} ${user.name || ''}`.trim(),
-              telephone_patient: user.phone || null,
-              position: currentPosition 
-            },
-          ])
+          .insert([{
+            code: ticketNumber,
+            id_service: service.id,
+            id_guichet: targetCounter.id,
+            id_patient_connecte: user.id,
+            statut: "waiting",
+            patient_nom: `${user.firstName || ''} ${user.name || ''}`.trim(),
+            telephone_patient: user.phone || null,
+            position: currentPosition,
+          }])
           .select()
           .single()
 
         if (error) throw error
 
-        // Resynchronisation immédiate du state global — ne dépend plus uniquement du Realtime
         await fetchTickets()
-
         setLocalTakenServices(prev => [...prev, service.id])
-        setNewTicket({ 
-          code: data.code, 
-          service: service.name, 
-          counterName: targetCounter.name,
-          position: currentPosition       
-        })
+        setNewTicket({ code: data.code, service: service.name, counterName: targetCounter.name, position: currentPosition })
         setShowSuccessModal(true)
         toast.success("Ticket créé avec succès !")
         router.refresh()
@@ -231,7 +213,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
       if (existingActiveAnonTickets && existingActiveAnonTickets.length > 0 && !isAdmin) {
         toast.error("Nom déjà enregistré", {
-          description: `Un ticket actif existe déjà au nom de ${fullFormName} pour ce service.`
+          description: `Un ticket actif existe déjà au nom de ${fullFormName} pour ce service.`,
         })
         return
       }
@@ -242,35 +224,24 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
       const { data, error } = await supabase
         .from("ticket")
-        .insert([
-          {
-            code: ticketNumber,
-            id_service: selectedService.id,
-            id_guichet: selectedCounter.id,
-            id_patient_connecte: null,
-            statut: "waiting",
-            patient_nom: fullFormName,
-          },
-        ])
+        .insert([{
+          code: ticketNumber,
+          id_service: selectedService.id,
+          id_guichet: selectedCounter.id,
+          id_patient_connecte: null,
+          statut: "waiting",
+          patient_nom: fullFormName,
+        }])
         .select()
         .single()
 
       if (error) throw error
 
-      // Resynchronisation immédiate du state global
       await fetchTickets()
 
-      if (!isAdmin) {
-        setLocalTakenServices(prev => [...prev, selectedService.id])
-      }
+      if (!isAdmin) setLocalTakenServices(prev => [...prev, selectedService.id])
 
-      setNewTicket({ 
-        code: data.code, 
-        service: selectedService.name,
-        counterName: selectedCounter.name,
-        position: currentPosition
-      })
-      
+      setNewTicket({ code: data.code, service: selectedService.name, counterName: selectedCounter.name, position: currentPosition })
       setShowTicketModal(false)
       setShowSuccessModal(true)
       setFormData({ nom: "", prenom: "" })
@@ -288,21 +259,18 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     if (serviceId && services.length > 0 && !selectedService) {
       const targetService = services.find(s => s.id === serviceId)
       if (targetService) {
-        if (targetService.isActive) {
+        const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents)
+        if (isEffectivelyActive) {
           handleTakeTicket(targetService)
-          router.replace(window.location.pathname)
         } else {
-          toast.error("Service fermé")
-          router.replace(window.location.pathname)
+          toast.error("Service indisponible", { description: closingReason })
         }
+        router.replace(window.location.pathname)
       }
     }
-  }, [searchParams, services, selectedService])
+  }, [searchParams, services, selectedService, counters, agents])
 
   useEffect(() => {
-    // CORRIGÉ : on attend que `services` soit chargé avant de lancer la caméra — sans
-    // ça, un scan trop rapide (avant le premier fetchServices()) renvoyait toujours
-    // "QR invalide", même avec un QR parfaitement valide.
     if (showScannerModal && services.length > 0) {
       setScannerError(null)
       const timer = setTimeout(() => {
@@ -310,45 +278,58 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         html5QrCodeRef.current = html5QrCode
 
         html5QrCode.start(
-          { facingMode: "environment" }, 
+          { facingMode: "environment" },
           { fps: 10, qrbox: { width: 250, height: 250 } },
           async (decodedText) => {
             const serviceKey = extractServiceKey(decodedText)
             const matchedService = services.find(s => s.id === serviceKey)
 
-            if (matchedService) {
-              const isTimeOpen = isWithinOperatingHours(matchedService.openTime, matchedService.closeTime)
-              const hasAvailableCounter = counters.some(c => c.serviceId === matchedService.id && c.isActive)
-              const hasTicketLocal = !isAdmin && isRealPatient && (localTakenServices.includes(matchedService.id) || tickets.some(
-                t => t.userId === user.id && t.service?.id === matchedService.id && (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
-              ))
-
-              if (!matchedService.isActive) {
-                setScannerError(`Le service ${matchedService.name} est désactivé.`)
-              } else if (!isTimeOpen) {
-                setScannerError(`Le service ${matchedService.name} est hors horaires (${matchedService.openTime} - ${matchedService.closeTime}).`)
-              } else if (!hasAvailableCounter) {
-                setScannerError(`Aucun guichet n'est disponible pour le service ${matchedService.name}.`)
-              } else if (hasTicketLocal) {
-                setScannerError(`Vous avez déjà un ticket actif pour le service ${matchedService.name}.`)
-              } else {
-                html5QrCode.stop().then(() => {
-                  setShowScannerModal(false)
-                  handleTakeTicket(matchedService)
-                }).catch(err => console.error(err))
-              }
-            } else {
+            if (!matchedService) {
               setScannerError(`QR code invalide ou service non reconnu. (Code détecté : ${serviceKey.substring(0, 40)})`)
+              return
             }
+
+            // CORRIGÉ : on utilise getServiceAvailability — la même fonction que la liste.
+            // Avant, le scanner n'appliquait pas la vérification de l'agent, ce qui
+            // permettait de scanner un service "Aucun guichet dispo" et de prendre quand
+            // même un ticket dessus.
+            const { isEffectivelyActive, closingReason } = getServiceAvailability(matchedService, counters, agents)
+
+            if (!isEffectivelyActive) {
+              setScannerError(`Le service ${matchedService.name} est indisponible : ${closingReason}.`)
+              return
+            }
+
+            const hasTicketLocal =
+              !isAdmin &&
+              isRealPatient &&
+              (localTakenServices.includes(matchedService.id) ||
+                tickets.some(
+                  t =>
+                    t.userId === user?.id &&
+                    t.service?.id === matchedService.id &&
+                    (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
+                ))
+
+            if (hasTicketLocal) {
+              setScannerError(`Vous avez déjà un ticket actif pour le service ${matchedService.name}.`)
+              return
+            }
+
+            html5QrCode.stop().then(() => {
+              setShowScannerModal(false)
+              handleTakeTicket(matchedService)
+            }).catch(err => console.error(err))
           },
           () => {}
-        ).catch((err) => {
+        ).catch(err => {
           console.error(err)
           setScannerError("Impossible d'accéder à la caméra de votre appareil.")
         })
       }, 300)
 
       return () => clearTimeout(timer)
+
     } else if (showScannerModal && services.length === 0) {
       setScannerError("Chargement des services en cours, veuillez patienter...")
     }
@@ -358,7 +339,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         html5QrCodeRef.current.stop().catch(err => console.error(err))
       }
     }
-  }, [showScannerModal, services, tickets, localTakenServices, user, counters]) 
+  }, [showScannerModal, services, tickets, localTakenServices, user, counters, agents])
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -377,7 +358,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
               </Button>
             )}
           </div>
-          
+
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -403,33 +384,21 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         <div className="grid gap-4 sm:grid-cols-2 auto-rows-fr">
           <AnimatePresence mode="popLayout">
             {filteredServices
-              .map((service) => {
-                const isTimeOpen = isWithinOperatingHours(service.openTime, service.closeTime)
-                
-                const hasAvailableAgent = counters.some(counter => 
-                  counter.serviceId === service.id && 
-                  counter.isActive && 
-                  agents.some(agent => 
-                    agent.id === counter.id_agent_actuel && 
-                    agent.isOnline && 
-                    !agent.est_banni
-                  )
-                )
-
-                const isEffectivelyActive = service.isActive && isTimeOpen && hasAvailableAgent
+              .map(service => {
+                const { isEffectivelyActive, closingReason } = getServiceAvailability(service, counters, agents)
                 const waitingCount = calculateQueue(service.id, tickets)
                 const estimatedWait = waitingCount > 0 ? waitingCount * 8 : 5
 
-                let closingReason = "Service Indisponible"
-                if (!service.isActive) closingReason = "Fermé"
-                else if (!isTimeOpen) closingReason = "Hors Horaires"
-                else if (!hasAvailableAgent) closingReason = "Aucun Guichet Dispo"
-
-                const hasTicketLocal = !isAdmin && isRealPatient && (localTakenServices.includes(service.id) || tickets.some(
-                  t => t.userId === user.id && 
-                       t.service?.id === service.id && 
-                       (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
-                ))
+                const hasTicketLocal =
+                  !isAdmin &&
+                  isRealPatient &&
+                  (localTakenServices.includes(service.id) ||
+                    tickets.some(
+                      t =>
+                        t.userId === user?.id &&
+                        t.service?.id === service.id &&
+                        (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
+                    ))
 
                 return { service, isEffectivelyActive, closingReason, waitingCount, estimatedWait, hasTicketLocal }
               })
@@ -444,11 +413,11 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
                   layout
                   className="h-full"
                 >
-                  <Card 
+                  <Card
                     onClick={() => isEffectivelyActive && !hasTicketLocal && handleTakeTicket(service)}
                     className={`group border border-border/50 transition-all h-full flex flex-col ${
                       isEffectivelyActive && !hasTicketLocal
-                        ? "cursor-pointer hover:border-emerald hover:shadow-lg select-none" 
+                        ? "cursor-pointer hover:border-emerald hover:shadow-lg select-none"
                         : "bg-accent/10"
                     }`}
                   >
@@ -456,17 +425,17 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
                       <div className="flex items-start gap-4 flex-1">
                         <div className={`flex size-14 shrink-0 items-center justify-center rounded-2xl transition-colors ${
                           isEffectivelyActive && !hasTicketLocal
-                            ? "bg-emerald-light text-emerald group-hover:bg-emerald group-hover:text-primary-foreground" 
+                            ? "bg-emerald-light text-emerald group-hover:bg-emerald group-hover:text-primary-foreground"
                             : "bg-muted text-muted-foreground"
                         }`}>
                           {iconMap[service.icon] || <Stethoscope className="size-6" />}
                         </div>
-                        
+
                         <div className="flex-1 flex flex-col justify-between h-full min-h-[135px]">
                           <div>
                             <div className="flex items-start justify-between gap-2">
                               <h3 className="font-semibold text-foreground line-clamp-1">{service.name}</h3>
-                              {!isEffectivelyActive && (
+                              {!isEffectivelyActive && !hasTicketLocal && (
                                 <Badge variant="destructive" className="gap-1 px-2 py-0.5 text-[10px] font-bold shrink-0">
                                   <Ban className="size-3" /> {closingReason}
                                 </Badge>
@@ -477,9 +446,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
                                 </Badge>
                               )}
                             </div>
-                            
+
                             <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{service.description}</p>
-                            
+
                             <div className="mt-3 flex items-center gap-4 min-h-[20px]">
                               {isEffectivelyActive ? (
                                 <>
@@ -499,21 +468,21 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
                           </div>
 
                           <div className="mt-4">
-                            <Button 
-                                disabled={!!(!isEffectivelyActive || hasTicketLocal)}
+                            <Button
+                              disabled={!isEffectivelyActive || hasTicketLocal}
                               className={`w-full pointer-events-none ${
                                 hasTicketLocal
                                   ? "bg-amber-500 text-white"
-                                  : isEffectivelyActive 
-                                    ? "bg-emerald text-primary-foreground group-hover:bg-emerald/90" 
-                                    : "bg-muted text-muted-foreground"
+                                  : isEffectivelyActive
+                                  ? "bg-emerald text-primary-foreground group-hover:bg-emerald/90"
+                                  : "bg-muted text-muted-foreground"
                               }`}
                             >
-                              {hasTicketLocal 
-                                ? "Ticket en cours" 
-                                : isEffectivelyActive 
-                                  ? "Prendre un ticket" 
-                                  : closingReason}
+                              {hasTicketLocal
+                                ? "Ticket en cours"
+                                : isEffectivelyActive
+                                ? "Prendre un ticket"
+                                : closingReason}
                             </Button>
                           </div>
                         </div>
@@ -569,7 +538,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           </FieldGroup>
           <div className="mt-6 flex gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setShowTicketModal(false)}>Annuler</Button>
-            <Button 
+            <Button
               className="flex-1 bg-emerald text-primary-foreground hover:bg-emerald/90"
               onClick={handleSubmitForm}
               disabled={!formData.nom || !formData.prenom}
@@ -591,17 +560,16 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           <div className="my-6 rounded-2xl bg-emerald-light p-6">
             <p className="text-sm text-emerald">Numéro de passage</p>
             <p className="text-4xl font-bold text-emerald">{newTicket?.code}</p>
-            
-            <p className="text-sm font-semibold text-emerald/90 mt-2">
-              Position dans la file : Rang {newTicket?.position}
-            </p>
-            
+            <p className="text-sm font-semibold text-emerald/90 mt-2">Position dans la file : Rang {newTicket?.position}</p>
             {newTicket?.counterName && <p className="text-xs text-emerald/80 mt-1">Dirigez-vous vers le : {newTicket.counterName}</p>}
           </div>
-          <Button className="mt-6 w-full bg-emerald text-primary-foreground hover:bg-emerald/90" onClick={() => {
-            setShowSuccessModal(false)
-            if (!isAdmin) router.push("/patient/tickets")
-          }}>
+          <Button
+            className="mt-6 w-full bg-emerald text-primary-foreground hover:bg-emerald/90"
+            onClick={() => {
+              setShowSuccessModal(false)
+              if (!isAdmin) router.push("/patient/tickets")
+            }}
+          >
             {isAdmin ? "Prendre un autre ticket" : "Suivre mon rang d'attente"}
           </Button>
         </DialogContent>

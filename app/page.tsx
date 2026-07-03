@@ -29,9 +29,7 @@ export default function HomePage() {
     setIsLoginOpen(true)
   }
 
-  // Une fois le QR scanné et validé, on redirige avec le paramètre ?service=...
-  // que LandingView sait déjà lire pour ouvrir automatiquement le formulaire
-  // de prise de ticket correspondant.
+  
   const handleServiceScanned = (service: Service) => {
     router.push(`/?service=${service.id}`)
   }

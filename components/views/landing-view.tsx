@@ -5,34 +5,9 @@ import { supabase } from "@/lib/supabase"
 import * as LucideIcons from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Search,
-  UserCheck,
-  Eye,
-  QrCode,
-  Building2,
-  Clock,
-  Users,
-  CheckCircle2,
-  Smartphone,
-  Bell,
-  Shield,
-  ChevronRight,
-  MapPin,
-  Phone,
-  Mail,
-  Stethoscope,
-  Siren,
-  ScanLine,
-  FlaskConical,
-  Pill,
-  HeartPulse,
-  ArrowRight,
-  Star,
-  LogIn,
-  Menu,
-  X,
-  UserPlus,
-  RefreshCw
+  Search, Eye, QrCode, Building2, Clock, Users, CheckCircle2,
+  Smartphone, Bell, Shield, ChevronRight, MapPin, Phone, Mail,
+  Stethoscope, ArrowRight, Star, LogIn, Menu, X, UserPlus, RefreshCw
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -50,96 +25,95 @@ interface LandingViewProps {
   onLogin: () => void
 }
 
-const DynamicIcon = ({ name, className }: { name: string, className?: string }) => {
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
   const LucideIcon = (LucideIcons as any)[name] || LucideIcons.Building2
   return <LucideIcon className={className} />
 }
 
 const features = [
-  {
-    icon: <Smartphone className="size-6" />,
-    title: "Prise de ticket en ligne",
-    description: "Plus besoin de faire la queue physiquement. Prenez votre ticket depuis votre téléphone."
-  },
-  {
-    icon: <Bell className="size-6" />,
-    title: "Notifications en temps réel",
-    description: "Recevez une alerte quand votre tour approche. Ne manquez plus jamais votre appel."
-  },
-  {
-    icon: <Clock className="size-6" />,
-    title: "Estimation du temps d'attente",
-    description: "Consultez le temps d'attente estimé et planifiez votre visite en conséquence."
-  },
-  {
-    icon: <Shield className="size-6" />,
-    title: "Sécurité et confidentialité",
-    description: "Vos données sont protégées et traitées avec la plus grande confidentialité."
-  }
+  { icon: <Smartphone className="size-6" />, title: "Prise de ticket en ligne", description: "Plus besoin de faire la queue physiquement. Prenez votre ticket depuis votre téléphone." },
+  { icon: <Bell className="size-6" />, title: "Notifications en temps réel", description: "Recevez une alerte quand votre tour approche. Ne manquez plus jamais votre appel." },
+  { icon: <Clock className="size-6" />, title: "Estimation du temps d'attente", description: "Consultez le temps d'attente estimé et planifiez votre visite en conséquence." },
+  { icon: <Shield className="size-6" />, title: "Sécurité et confidentialité", description: "Vos données sont protégées et traitées avec la plus grande confidentialité." },
 ]
 
 const testimonials = [
-  {
-    name: "Aminata D.",
-    text: "Grâce à Rang+, je n'ai plus besoin d'arriver à 6h du matin. Je prends mon ticket depuis chez moi !",
-    rating: 5
-  },
-  {
-    name: "Oumar T.",
-    text: "Application très pratique. Je suis notifié quand mon tour approche, c'est révolutionnaire.",
-    rating: 5
-  },
-  {
-    name: "Fatoumata K.",
-    text: "Le suivi en temps réel me permet de mieux gérer mon temps. Merci Rang+ !",
-    rating: 5
-  }
+  { name: "Aminata D.", text: "Grâce à Rang+, je n'ai plus besoin d'arriver à 6h du matin. Je prends mon ticket depuis chez moi !", rating: 5 },
+  { name: "Oumar T.", text: "Application très pratique. Je suis notifié quand mon tour approche, c'est révolutionnaire.", rating: 5 },
+  { name: "Fatoumata K.", text: "Le suivi en temps réel me permet de mieux gérer mon temps. Merci Rang+ !", rating: 5 },
 ]
 
-// Décide si un service est réellement actif (horaires + guichet actif disponible)
-const checkServiceStatus = (service: Service, counters: Counter[]) => {
+// ALIGNÉ sur ServicesView : un service est réellement actif seulement si
+// service.isActive + horaires valides + guichet actif avec agent en ligne non banni.
+// Avant, on ne vérifiait que les horaires et l'existence d'un guichet actif —
+// ce qui pouvait afficher un service comme disponible sans agent pour répondre.
+const checkServiceStatus = (
+  service: Service,
+  counters: Counter[],
+  agents: { id: string; isOnline: boolean; est_banni: boolean }[]
+) => {
+  if (!service.isActive) return false
   if (!service?.openTime || !service?.closeTime) return false
 
   const now = new Date()
   const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const [startH, startM] = service.openTime.split(":").map(Number)
+  const [endH, endM] = service.closeTime.split(":").map(Number)
+  const isTimeValid =
+    currentMinutes >= startH * 60 + startM &&
+    currentMinutes <= endH * 60 + endM
 
-  const [startH, startM] = service.openTime.split(':').map(Number)
-  const [endH, endM] = service.closeTime.split(':').map(Number)
-
-  const openMinutes = startH * 60 + startM
-  const closeMinutes = endH * 60 + endM
-
-  const isTimeValid = currentMinutes >= openMinutes && currentMinutes <= closeMinutes
-
-  const hasActiveCounter = counters.some(c =>
-    c.serviceId === service.id &&
-    c.isActive
+  const hasAvailableAgent = counters.some(
+    (counter) =>
+      counter.serviceId === service.id &&
+      counter.isActive &&
+      agents.some(
+        (agent) =>
+          agent.id === (counter as any).id_agent_actuel &&
+          agent.isOnline &&
+          !agent.est_banni
+      )
   )
 
-  return isTimeValid && hasActiveCounter
+  return isTimeValid && hasAvailableAgent
+}
+
+// Raison lisible de fermeture — même logique que ServicesView
+const getClosingReason = (
+  service: Service,
+  counters: Counter[],
+  agents: { id: string; isOnline: boolean; est_banni: boolean }[]
+) => {
+  if (!service.isActive) return "Fermé"
+  const now = new Date()
+  const cur = now.getHours() * 60 + now.getMinutes()
+  const [sh, sm] = service.openTime.split(":").map(Number)
+  const [eh, em] = service.closeTime.split(":").map(Number)
+  if (cur < sh * 60 + sm || cur > eh * 60 + em) return "Hors horaires"
+  const hasAgent = counters.some(
+    (c) =>
+      c.serviceId === service.id &&
+      c.isActive &&
+      agents.some((a) => a.id === (c as any).id_agent_actuel && a.isOnline && !a.est_banni)
+  )
+  if (!hasAgent) return "Aucun guichet dispo"
+  return "Indisponible"
 }
 
 function getServicePrefix(serviceName: string): string {
-  const cleaned = serviceName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-  const lettersOnly = cleaned.replace(/[^A-Z]/g, "")
-  return lettersOnly.substring(0, 1) || "XX"
+  const cleaned = serviceName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
+  return cleaned.replace(/[^A-Z]/g, "").substring(0, 1) || "X"
 }
 
 function generateUniqueTicketCode(serviceName: string, sequenceNumber: number): string {
-  const prefix = getServicePrefix(serviceName)
-  return `${prefix}${String(sequenceNumber).padStart(3, "0")}`
+  return `${getServicePrefix(serviceName)}${String(sequenceNumber).padStart(3, "0")}`
 }
 
-const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?: string }; statut: string }[]) => {
-  return allTickets.filter(t => t.service?.id === serviceId && t.statut === "waiting").length
-}
+const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?: string }; statut: string }[]) =>
+  allTickets.filter((t) => t.service?.id === serviceId && t.statut === "waiting").length
 
-const countAllTicketsForService = (serviceId: string, allTickets: { service?: { id?: string } }[]) => {
-  return allTickets.filter(t => t.service?.id === serviceId).length
-}
+const countAllTicketsForService = (serviceId: string, allTickets: { service?: { id?: string } }[]) =>
+  allTickets.filter((t) => t.service?.id === serviceId).length
 
 const isValidPhone = (phone: string) => /^\d{8}$/.test(phone.trim())
 
@@ -147,33 +121,24 @@ const ACTIVE_STATUSES = ["waiting", "called", "serving"]
 const SERVICES_PER_PAGE = 6
 
 export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
-  const { services, counters, tickets, fetchTickets } = useApp()
+  const { services, counters, tickets, agents, fetchTickets } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
-
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const [showTicketModal, setShowTicketModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastCreatedTicketId, setLastCreatedTicketId] = useState<string | null>(null)
-
   const [formData, setFormData] = useState({ nomComplet: "", telephone: "" })
   const [phoneError, setPhoneError] = useState<string | null>(null)
-
   const [trackedTicketIds, setTrackedTicketIds] = useState<string[]>([])
   const [activeModalTicketId, setActiveModalTicketId] = useState<string | null>(null)
   const [isMounted, setIsMounted] = useState(false)
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
-
-  // Remet à la page 1 quand la recherche change
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery])
+  useEffect(() => { setIsMounted(true) }, [])
+  useEffect(() => { setCurrentPage(1) }, [searchQuery])
 
   useEffect(() => {
     const saved = localStorage.getItem("rang_plus_anonymous_ticket_ids")
@@ -182,9 +147,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         const parsed = JSON.parse(saved)
         if (Array.isArray(parsed)) setTrackedTicketIds(parsed)
       } catch {
-        if (typeof saved === "string" && saved.length > 0) {
-          setTrackedTicketIds([saved])
-        }
+        if (typeof saved === "string" && saved.length > 0) setTrackedTicketIds([saved])
       }
     }
   }, [])
@@ -197,25 +160,29 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     }
   }, [trackedTicketIds])
 
-  const trackedActiveTickets: Ticket[] = useMemo(() => {
-    return trackedTicketIds
-      .map(id => tickets.find(t => t.id === id))
-      .filter((t): t is Ticket => !!t && ACTIVE_STATUSES.includes(t.statut))
-  }, [trackedTicketIds, tickets])
+  const trackedActiveTickets: Ticket[] = useMemo(() =>
+    trackedTicketIds
+      .map((id) => tickets.find((t) => t.id === id))
+      .filter((t): t is Ticket => !!t && ACTIVE_STATUSES.includes(t.statut)),
+    [trackedTicketIds, tickets]
+  )
 
   useEffect(() => {
-    const stillActiveIds = trackedActiveTickets.map(t => t.id)
-    const hasStaleIds = trackedTicketIds.some(id => !stillActiveIds.includes(id))
-    if (hasStaleIds) {
+    const stillActiveIds = trackedActiveTickets.map((t) => t.id)
+    if (trackedTicketIds.some((id) => !stillActiveIds.includes(id))) {
       setTrackedTicketIds(stillActiveIds)
     }
   }, [trackedActiveTickets, trackedTicketIds])
 
   const mostUrgentTicket: Ticket | null = useMemo(() => {
     if (trackedActiveTickets.length === 0) return null
-    const calledOrServing = trackedActiveTickets.filter(t => t.statut === "called" || t.statut === "serving")
+    const calledOrServing = trackedActiveTickets.filter(
+      (t) => t.statut === "called" || t.statut === "serving"
+    )
     if (calledOrServing.length > 0) {
-      return calledOrServing.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())[0]
+      return calledOrServing.sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      )[0]
     }
     return [...trackedActiveTickets].sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -224,7 +191,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
   const ticketShownInModal: Ticket | null = useMemo(() => {
     if (activeModalTicketId) {
-      const found = trackedActiveTickets.find(t => t.id === activeModalTicketId)
+      const found = trackedActiveTickets.find((t) => t.id === activeModalTicketId)
       if (found) return found
     }
     return mostUrgentTicket
@@ -245,172 +212,153 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       }
     : null
 
-  const totalWaiting = tickets.filter(t => t.statut === "waiting").length
+  const totalWaiting = tickets.filter((t) => t.statut === "waiting").length
 
-  const servicesWithStatus = useMemo(() => {
-    return services.map(s => ({
+  // CORRIGÉ : on passe agents à checkServiceStatus pour la vérification complète
+  const servicesWithStatus = useMemo(() =>
+    services.map((s) => ({
       ...s,
-      isActive: checkServiceStatus(s, counters)
-    }))
-  }, [services, counters])
+      isActive: checkServiceStatus(s, counters, agents),
+      closingReason: checkServiceStatus(s, counters, agents)
+        ? ""
+        : getClosingReason(s, counters, agents),
+    })),
+    [services, counters, agents]
+  )
 
-  const hasActiveTicketForService = (serviceId: string) => {
-    return trackedActiveTickets.some(t => t.service?.id === serviceId)
-  }
+  const hasActiveTicketForService = (serviceId: string) =>
+    trackedActiveTickets.some((t) => t.service?.id === serviceId)
 
-  const handleOpenTicketModal = (service: Service) => {
+  const handleOpenTicketModal = (service: Service & { isActive: boolean }) => {
     if (!service.isActive) return
     if (hasActiveTicketForService(service.id)) {
       toast.error("Ticket déjà en cours", {
-        description: `Vous avez déjà un ticket actif pour le service ${service.name}.`
+        description: `Vous avez déjà un ticket actif pour le service ${service.name}.`,
       })
       return
     }
     setSelectedService(service)
     setShowTicketModal(true)
   }
-useEffect(() => {
-  if (services.length === 0 || selectedService) return
 
-  const serviceId = new URLSearchParams(window.location.search).get("service") 
-    || new URLSearchParams(window.location.search).get("scan")
-  if (!serviceId) return
+  useEffect(() => {
+    if (services.length === 0 || selectedService) return
+    const serviceId =
+      new URLSearchParams(window.location.search).get("service") ||
+      new URLSearchParams(window.location.search).get("scan")
+    if (!serviceId) return
+    const serviceToSelect = services.find((s) => s.id === serviceId)
+    if (!serviceToSelect) return
+    const enriched = servicesWithStatus.find((s) => s.id === serviceId)
+    const isReallyActive = enriched?.isActive ?? false
+    if (!isReallyActive) {
+      toast.error("Service indisponible", {
+        description: `Le service ${serviceToSelect.name} n'est pas disponible (${enriched?.closingReason || "indisponible"}).`,
+      })
+    } else if (hasActiveTicketForService(serviceId)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`,
+      })
+    } else {
+      handleOpenTicketModal({ ...serviceToSelect, isActive: true, closingReason: "" })
+    }
+    window.history.replaceState({}, document.title, window.location.pathname)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, servicesWithStatus, selectedService, trackedActiveTickets])
 
-  const serviceToSelect = services.find(s => s.id === serviceId)
-  if (!serviceToSelect) return
+  const avgWaitTime = useMemo(() => {
+    const active = servicesWithStatus.filter((s) => s.isActive)
+    if (active.length === 0) return 0
+    return Math.round(
+      active.reduce((acc, s) => {
+        const q = tickets.filter((t) => t.service?.id === s.id && t.statut === "waiting").length
+        return acc + q * 5
+      }, 0) / active.length
+    )
+  }, [servicesWithStatus, tickets])
 
-  const isReallyActive = servicesWithStatus.find(s => s.id === serviceId)?.isActive ?? false
-
-  if (!isReallyActive) {
-    toast.error("Service indisponible", {
-      description: `Le service ${serviceToSelect.name} n'est pas disponible actuellement.`
-    })
-  } else if (hasActiveTicketForService(serviceId)) {
-    toast.error("Ticket déjà en cours", {
-      description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`
-    })
-  } else {
-    handleOpenTicketModal(serviceToSelect)
-  }
-
-  window.history.replaceState({}, document.title, window.location.pathname)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [services, servicesWithStatus, selectedService, trackedActiveTickets])
-
-  const activeServices = services.filter(s => s.isActive)
-  const avgWaitTime = activeServices.length > 0
-    ? Math.round(
-        activeServices.reduce((acc, s) => {
-          const queueForService = tickets.filter(t => t.service?.id === s.id && t.statut === "waiting").length
-          return acc + (queueForService * 5)
-        }, 0) / activeServices.length
+  const filteredAndSortedServices = useMemo(() =>
+    services
+      .filter(
+        (s) =>
+          s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.description.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : 0
-
-  // Liste filtrée + triée (actifs en premier) — base pour la pagination
-  const filteredAndSortedServices = useMemo(() => {
-    return services
-      .filter(s =>
-        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        s.description.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      .map((service) => ({
-        ...service,
-        isActive: servicesWithStatus.find(s => s.id === service.id)?.isActive ?? service.isActive
-      }))
-      .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1))
-  }, [services, servicesWithStatus, searchQuery])
+      .map((s) => {
+        const enriched = servicesWithStatus.find((sw) => sw.id === s.id)
+        return {
+          ...s,
+          isActive: enriched?.isActive ?? false,
+          closingReason: enriched?.closingReason ?? "Indisponible",
+        }
+      })
+      .sort((a, b) => (a.isActive === b.isActive ? 0 : a.isActive ? -1 : 1)),
+    [services, servicesWithStatus, searchQuery]
+  )
 
   const totalPages = Math.ceil(filteredAndSortedServices.length / SERVICES_PER_PAGE)
-
-  const paginatedServices = useMemo(() => {
-    return filteredAndSortedServices.slice(
+  const paginatedServices = useMemo(() =>
+    filteredAndSortedServices.slice(
       (currentPage - 1) * SERVICES_PER_PAGE,
       currentPage * SERVICES_PER_PAGE
-    )
-  }, [filteredAndSortedServices, currentPage])
+    ),
+    [filteredAndSortedServices, currentPage]
+  )
 
   const handlePhoneChange = (value: string) => {
-    const digitsOnly = value.replace(/\D/g, "")
-    setFormData({ ...formData, telephone: digitsOnly })
+    setFormData({ ...formData, telephone: value.replace(/\D/g, "") })
     setPhoneError(null)
   }
 
   const handleConfirmTicket = async () => {
     if (!selectedService || !formData.nomComplet || !formData.telephone || isSubmitting) return
-
     if (!isValidPhone(formData.telephone)) {
       setPhoneError("Le numéro doit contenir exactement 8 chiffres.")
       return
     }
-
     if (hasActiveTicketForService(selectedService.id)) {
       toast.error("Ticket déjà en cours", {
-        description: `Vous avez déjà un ticket actif pour le service ${selectedService.name}.`
+        description: `Vous avez déjà un ticket actif pour ${selectedService.name}.`,
       })
       setShowTicketModal(false)
       return
     }
-
     setIsSubmitting(true)
-
     try {
       const fullName = formData.nomComplet.trim()
       const phoneValue = formData.telephone.trim()
 
-      const { data: existingActiveTickets, error: checkError } = await supabase
-        .from("ticket")
-        .select("id")
-        .ilike("patient_nom", fullName)
+      const { data: byName, error: e1 } = await supabase
+        .from("ticket").select("id").ilike("patient_nom", fullName)
         .eq("id_service", selectedService.id)
         .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
-
-      if (checkError) throw checkError
-
-      if (existingActiveTickets && existingActiveTickets.length > 0) {
-        toast.error("Ticket déjà actif", {
-          description: `Un ticket actif existe déjà au nom de ${fullName} pour le service ${selectedService.name}.`
-        })
-        setIsSubmitting(false)
-        return
+      if (e1) throw e1
+      if (byName && byName.length > 0) {
+        toast.error("Ticket déjà actif", { description: `Un ticket actif existe déjà au nom de ${fullName}.` })
+        setIsSubmitting(false); return
       }
 
-      const { data: existingPhoneTickets, error: checkPhoneError } = await supabase
-        .from("ticket")
-        .select("id")
-        .eq("telephone_patient", phoneValue)
+      const { data: byPhone, error: e2 } = await supabase
+        .from("ticket").select("id").eq("telephone_patient", phoneValue)
         .eq("id_service", selectedService.id)
         .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
-
-      if (checkPhoneError) throw checkPhoneError
-
-      if (existingPhoneTickets && existingPhoneTickets.length > 0) {
-        toast.error("Ticket déjà actif", {
-          description: "Ce numéro de téléphone a déjà un ticket actif pour ce service."
-        })
-        setIsSubmitting(false)
-        return
+      if (e2) throw e2
+      if (byPhone && byPhone.length > 0) {
+        toast.error("Ticket déjà actif", { description: "Ce numéro a déjà un ticket actif pour ce service." })
+        setIsSubmitting(false); return
       }
 
-      const activeCounters = counters.filter(c => c.serviceId === selectedService.id && c.isActive)
+      const activeCounters = counters.filter((c) => c.serviceId === selectedService.id && c.isActive)
       if (activeCounters.length === 0) {
-        toast.error("Service indisponible", {
-          description: "Aucun guichet n'est disponible pour ce service actuellement."
-        })
-        setIsSubmitting(false)
-        return
+        toast.error("Service indisponible", { description: "Aucun guichet disponible." })
+        setIsSubmitting(false); return
       }
 
       let targetCounter = activeCounters[0]
       let minWaiting = Infinity
       activeCounters.forEach((counter) => {
-        const waitingAtThisCounter = tickets.filter(
-          (t) => t.counterId === counter.id && t.statut === "waiting"
-        ).length
-        if (waitingAtThisCounter < minWaiting) {
-          minWaiting = waitingAtThisCounter
-          targetCounter = counter
-        }
+        const w = tickets.filter((t) => t.counterId === counter.id && t.statut === "waiting").length
+        if (w < minWaiting) { minWaiting = w; targetCounter = counter }
       })
 
       const sequenceNumber = countAllTicketsForService(selectedService.id, tickets) + 1
@@ -418,72 +366,52 @@ useEffect(() => {
 
       const { data, error } = await supabase
         .from("ticket")
-        .insert([
-          {
-            code: ticketNumber,
-            id_service: selectedService.id,
-            id_guichet: targetCounter.id,
-            id_patient_connecte: null,
-            statut: "waiting",
-            patient_nom: fullName,
-            telephone_patient: phoneValue,
-          },
-        ])
-        .select()
-        .single()
-
+        .insert([{
+          code: ticketNumber,
+          id_service: selectedService.id,
+          id_guichet: targetCounter.id,
+          id_patient_connecte: null,
+          statut: "waiting",
+          patient_nom: fullName,
+          telephone_patient: phoneValue,
+        }])
+        .select().single()
       if (error) throw error
 
       await fetchTickets()
-
-      setTrackedTicketIds(prev => Array.from(new Set([...prev, data.id])))
+      setTrackedTicketIds((prev) => Array.from(new Set([...prev, data.id])))
       setLastCreatedTicketId(data.id)
-
       setShowTicketModal(false)
       setShowSuccessModal(true)
       setFormData({ nomComplet: "", telephone: "" })
       toast.success("Ticket créé avec succès !")
-
     } catch (err) {
-      console.error("Erreur création ticket:", err)
-      toast.error("Erreur", { description: "Impossible d'enregistrer votre ticket. Veuillez réessayer." })
+      console.error(err)
+      toast.error("Erreur", { description: "Impossible d'enregistrer votre ticket." })
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleCloseTicketModal = (open: boolean) => {
-    if (!open) {
-      setShowTicketModal(false)
-      setFormData({ nomComplet: "", telephone: "" })
-      setPhoneError(null)
-    } else {
-      setShowTicketModal(true)
-    }
+    if (!open) { setShowTicketModal(false); setFormData({ nomComplet: "", telephone: "" }); setPhoneError(null) }
+    else setShowTicketModal(true)
   }
 
   const handleCancelTrackedTicket = async () => {
     if (!ticketShownInModal) return
     const idToCancel = ticketShownInModal.id
     try {
-      const { error } = await supabase
-        .from("ticket")
-        .update({ statut: "cancelled" })
-        .eq("id", idToCancel)
-
+      const { error } = await supabase.from("ticket").update({ statut: "cancelled" }).eq("id", idToCancel)
       if (error) throw error
-
       await fetchTickets()
       toast.success("Ticket annulé")
-    } catch (err) {
-      console.error(err)
+    } catch {
       toast.error("Erreur", { description: "Impossible d'annuler le ticket." })
     } finally {
-      setTrackedTicketIds(prev => prev.filter(id => id !== idToCancel))
+      setTrackedTicketIds((prev) => prev.filter((id) => id !== idToCancel))
       setActiveModalTicketId(null)
-      if (trackedActiveTickets.length <= 1) {
-        setShowTrackingModal(false)
-      }
+      if (trackedActiveTickets.length <= 1) setShowTrackingModal(false)
     }
   }
 
@@ -492,198 +420,90 @@ useEffect(() => {
     setShowTrackingModal(true)
   }
 
-  // Scroll vers la section services puis change de page
   const goToPage = (page: number) => {
     setCurrentPage(page)
     document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })
   }
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  }
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0 }
-  }
+  const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.1 } } }
+  const itemVariants = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }
 
   return (
     <div className="min-h-screen bg-background relative">
 
-      {/* ───────────── NAVBAR ───────────── */}
+      {/* NAVBAR */}
       <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 lg:px-6">
-          <div
-            className="flex items-center gap-3 cursor-pointer select-none"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          >
+          <div className="flex items-center gap-3 cursor-pointer select-none" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
             <div className="flex flex-col items-start">
               <img src="/placeholder-logo.svg" alt="Rang+" className="h-8 w-auto" />
-              <span className="text-[11px] font-semibold text-[#1e293b]/70 italic tracking-tight mt-0.5">
-                Hôpital du Mali
-              </span>
+              <span className="text-[11px] font-semibold text-[#1e293b]/70 italic tracking-tight mt-0.5">Hôpital du Mali</span>
             </div>
           </div>
 
           <nav className="hidden md:flex items-center gap-8">
-            <button
-              onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Services
-            </button>
-
+            <button onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Services</button>
             {generatedTicket ? (
-              <button
-                onClick={openTrackingModal}
-                className="text-sm font-semibold text-primary animate-pulse flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors"
-              >
+              <button onClick={openTrackingModal} className="text-sm font-semibold text-primary animate-pulse flex items-center gap-1.5 bg-primary/10 px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors">
                 <RefreshCw className="size-3.5 animate-spin text-primary" />
-                Suivre mon ticket ({generatedTicket.number}
-                {trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""})
+                Suivre mon ticket ({generatedTicket.number}{trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""})
               </button>
             ) : (
-              <button
-                onClick={onTakeTicket}
-                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Prendre un ticket
-              </button>
+              <button onClick={onTakeTicket} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Prendre un ticket</button>
             )}
-
-            <button onClick={onScanQR} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              Scanner QR
-            </button>
-            <button
-              onClick={() => document.getElementById("contact-section")?.scrollIntoView({ behavior: "smooth" })}
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Contact
-            </button>
+            <button onClick={onScanQR} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Scanner QR</button>
+            <button onClick={() => document.getElementById("contact-section")?.scrollIntoView({ behavior: "smooth" })} className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Contact</button>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" onClick={onLogin} className="gap-2 text-sm font-medium">
-              <LogIn className="size-4" /> Connexion
-            </Button>
-            <Button onClick={onLogin} className="gap-2 rounded-xl">
-              <UserPlus className="size-4" /> Inscription
-            </Button>
+            <Button variant="ghost" onClick={onLogin} className="gap-2 text-sm font-medium"><LogIn className="size-4" /> Connexion</Button>
+            <Button onClick={onLogin} className="gap-2 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>
           </div>
 
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex md:hidden items-center justify-center size-10 rounded-xl hover:bg-muted transition-colors"
-          >
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="flex md:hidden items-center justify-center size-10 rounded-xl hover:bg-muted transition-colors">
             {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>
 
         {mobileMenuOpen && (
-          <motion.div
-            initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="md:hidden border-t border-border bg-background"
-          >
+          <motion.div initial={isMounted ? { opacity: 0, y: -10 } : false} animate={{ opacity: 1, y: 0 }} className="md:hidden border-t border-border bg-background">
             <div className="flex flex-col p-4 gap-2">
-              <a href="#services-section"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
-              >
-                <Stethoscope className="size-5 text-primary" />
-                Services
+              <a href="#services-section" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl font-medium hover:bg-muted transition-colors">
+                <Stethoscope className="size-5 text-primary" /> Services
               </a>
-              <button
-                onClick={() => { onTakeTicket(); setMobileMenuOpen(false); }}
-                className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
-              >
-                <CheckCircle2 className="size-5 text-primary" />
-                Prendre un ticket
+              <button onClick={() => { onTakeTicket(); setMobileMenuOpen(false) }} className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors">
+                <CheckCircle2 className="size-5 text-primary" /> Prendre un ticket
               </button>
-              <button
-                onClick={() => { onScanQR(); setMobileMenuOpen(false); }}
-                className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors"
-              >
-                <QrCode className="size-5 text-primary" />
-                Scanner QR Code
+              <button onClick={() => { onScanQR(); setMobileMenuOpen(false) }} className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors">
+                <QrCode className="size-5 text-primary" /> Scanner QR Code
               </button>
               <div className="border-t border-border my-2" />
-              <Button
-                variant="outline"
-                onClick={() => { onLogin(); setMobileMenuOpen(false); }}
-                className="w-full gap-2 justify-center h-12 rounded-xl"
-              >
-                <LogIn className="size-4" /> Connexion
-              </Button>
-              <Button
-                onClick={() => { onLogin(); setMobileMenuOpen(false); }}
-                className="w-full gap-2 justify-center h-12 rounded-xl"
-              >
-                <UserPlus className="size-4" /> Inscription
-              </Button>
+              <Button variant="outline" onClick={() => { onLogin(); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><LogIn className="size-4" /> Connexion</Button>
+              <Button onClick={() => { onLogin(); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>
             </div>
           </motion.div>
         )}
       </header>
 
-      {/* ───────────── HERO ───────────── */}
+      {/* HERO */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
         <div className="absolute top-0 right-0 w-96 h-96 bg-primary/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-
         <div className="relative px-6 py-16 lg:py-24">
-          <motion.div initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-4xl text-center">
-            <div className="mb-8 flex flex-col items-center">
-              <Badge variant="secondary" className="mb-4 px-4 py-1.5 text-sm font-medium">
-                Plateforme officielle de gestion des files d&apos;attente
-              </Badge>
-            </div>
-
-            <motion.h1
-              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-              className="mb-4 text-4xl font-bold tracking-tight text-foreground lg:text-6xl text-balance"
-            >
+          <motion.div initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-4xl text-center">
+            <Badge variant="secondary" className="mb-4 px-4 py-1.5 text-sm font-medium">Plateforme officielle de gestion des files d&apos;attente</Badge>
+            <motion.h1 initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-4 text-4xl font-bold tracking-tight text-foreground lg:text-6xl text-balance">
               Bienvenue à l&apos; <span className="text-primary">Hôpital du Mali</span>
             </motion.h1>
-
-            <motion.p
-              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="mb-8 text-lg text-muted-foreground lg:text-xl text-pretty max-w-2xl mx-auto"
-            >
-              Avec <span className="font-semibold text-primary">Rang+</span>, prenez votre ticket en ligne
-              et suivez votre position dans la file d&apos;attente en temps réel.
-              Fini les longues heures d&apos;attente inutiles !
+            <motion.p initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mb-8 text-lg text-muted-foreground lg:text-xl max-w-2xl mx-auto">
+              Avec <span className="font-semibold text-primary">Rang+</span>, prenez votre ticket en ligne et suivez votre position dans la file d&apos;attente en temps réel. Fini les longues heures d&apos;attente inutiles !
             </motion.p>
-
-            <motion.div
-              initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="flex flex-col sm:flex-row items-center justify-center gap-4"
-            >
-              <Button
-                size="lg"
-                onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })}
-                className="h-14 px-8 gap-3 rounded-2xl bg-primary text-lg font-semibold shadow-lg shadow-primary/30 hover:shadow-xl hover:shadow-primary/40 transition-all w-full sm:w-auto"
-              >
+            <motion.div initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Button size="lg" onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })} className="h-14 px-8 gap-3 rounded-2xl bg-primary text-lg font-semibold shadow-lg w-full sm:w-auto">
                 <CheckCircle2 className="size-5" /> Prendre un ticket
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={onScanQR}
-                className="h-14 px-8 gap-3 rounded-2xl border-2 text-lg font-semibold hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all w-full sm:w-auto"
-              >
+              <Button size="lg" variant="outline" onClick={onScanQR} className="h-14 px-8 gap-3 rounded-2xl border-2 text-lg font-semibold hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all w-full sm:w-auto">
                 <QrCode className="size-5" /> Scanner QR Code
               </Button>
             </motion.div>
@@ -691,120 +511,64 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* ───────────── STATS ───────────── */}
+      {/* STATS */}
       <section className="px-6 -mt-4 lg:mt-0">
         <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="mx-auto max-w-4xl">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg bg-card">
-                <CardContent className="p-4 lg:p-6 text-center">
-                  <div className="relative mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Users className="size-6 text-primary" />
-                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
-                    </span>
-                  </div>
-                  <p className="text-3xl font-bold text-foreground">{totalWaiting}</p>
-                  <p className="text-sm text-muted-foreground">Patients en attente</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg bg-card">
-                <CardContent className="p-4 lg:p-6 text-center">
-                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Clock className="size-6 text-primary" />
-                  </div>
-                  <p className="text-3xl font-bold text-foreground">{avgWaitTime} min</p>
-                  <p className="text-sm text-muted-foreground">Temps moyen</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg bg-card">
-                <CardContent className="p-4 lg:p-6 text-center">
-                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Building2 className="size-6 text-primary" />
-                  </div>
-                  <p className="text-3xl font-bold text-foreground">{services.length}</p>
-                  <p className="text-sm text-muted-foreground">Services actifs</p>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            <motion.div variants={itemVariants}>
-              <Card className="border-0 shadow-lg bg-card">
-                <CardContent className="p-4 lg:p-6 text-center">
-                  <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                    <CheckCircle2 className="size-6 text-primary" />
-                  </div>
-                  <p className="text-3xl font-bold text-foreground">24/7</p>
-                  <p className="text-sm text-muted-foreground">Disponibilité</p>
-                </CardContent>
-              </Card>
-            </motion.div>
+            {[
+              { icon: <Users className="size-6 text-primary" />, value: totalWaiting, label: "Patients en attente", pulse: true },
+              { icon: <Clock className="size-6 text-primary" />, value: `${avgWaitTime} min`, label: "Temps moyen" },
+              { icon: <Building2 className="size-6 text-primary" />, value: services.length, label: "Services" },
+              { icon: <CheckCircle2 className="size-6 text-primary" />, value: "24/7", label: "Disponibilité" },
+            ].map((stat, i) => (
+              <motion.div key={i} variants={itemVariants}>
+                <Card className="border-0 shadow-lg bg-card">
+                  <CardContent className="p-4 lg:p-6 text-center">
+                    <div className="relative mx-auto mb-3 flex size-12 items-center justify-center rounded-xl bg-primary/10">
+                      {stat.icon}
+                      {stat.pulse && (
+                        <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-primary" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-3xl font-bold text-foreground">{stat.value}</p>
+                    <p className="text-sm text-muted-foreground">{stat.label}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
           </div>
         </motion.div>
       </section>
 
-      {/* ───────────── SERVICES ───────────── */}
+      {/* SERVICES */}
       <section id="services-section" className="px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-4xl">
-          <motion.div
-            initial={isMounted ? { opacity: 0, y: 20 } : false}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-10"
-          >
+          <motion.div initial={isMounted ? { opacity: 0, y: 20 } : false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-10">
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Nos Services Médicaux</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Recherchez ou scannez le service dont vous avez besoin pour prendre votre ticket immédiatement.
-            </p>
+            <p className="text-muted-foreground max-w-xl mx-auto">Recherchez ou scannez le service dont vous avez besoin pour prendre votre ticket immédiatement.</p>
           </motion.div>
 
-          {/* Barre de recherche */}
           <div className="relative mb-6">
             <Search className="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Rechercher un service..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary"
-            />
-            <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-              onClick={onScanQR}
-            >
+            <Input placeholder="Rechercher un service..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="h-14 rounded-2xl border-2 bg-card pl-12 pr-14 text-base shadow-sm" />
+            <button className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors" onClick={onScanQR}>
               <QrCode className="size-6" />
             </button>
           </div>
 
-          {/* Compteur de résultats + numéro de page */}
           <div className="flex items-center justify-between mb-5">
             <p className="text-sm text-muted-foreground">
               {filteredAndSortedServices.length} service{filteredAndSortedServices.length !== 1 ? "s" : ""}
               {searchQuery ? ` pour "${searchQuery}"` : " disponibles"}
             </p>
-            {totalPages > 1 && (
-              <p className="text-sm text-muted-foreground">
-                Page {currentPage} / {totalPages}
-              </p>
-            )}
+            {totalPages > 1 && <p className="text-sm text-muted-foreground">Page {currentPage} / {totalPages}</p>}
           </div>
 
-          {/* Grille paginée */}
           <AnimatePresence mode="wait">
-            <motion.div
-              key={`${currentPage}-${searchQuery}`}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-              className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 min-h-[300px]"
-            >
+            <motion.div key={`${currentPage}-${searchQuery}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 min-h-[300px]">
               {paginatedServices.length === 0 ? (
                 <div className="col-span-full flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
                   <Search className="size-10 opacity-30" />
@@ -815,12 +579,7 @@ useEffect(() => {
                 paginatedServices.map((service) => {
                   const hasTicketHere = hasActiveTicketForService(service.id)
                   return (
-                    <motion.div
-                      key={service.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
+                    <motion.div key={service.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
                       <Card
                         className={`group border-2 bg-card flex flex-col h-full justify-between transition-all ${
                           service.isActive && !hasTicketHere
@@ -846,15 +605,13 @@ useEffect(() => {
                                 {hasTicketHere
                                   ? "Ticket actif"
                                   : service.isActive
-                                    ? `${tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length} en attente`
-                                    : "Fermé"
-                                }
+                                  ? `${tickets.filter((t) => t.service?.id === service.id && t.statut === "waiting").length} en attente`
+                                  : service.closingReason}
                               </Badge>
                             </div>
                             <h3 className="font-semibold text-foreground mb-1">{service.name}</h3>
                             <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{service.description}</p>
                           </div>
-
                           <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Clock className="size-4" />
@@ -867,7 +624,7 @@ useEffect(() => {
                             ) : hasTicketHere ? (
                               <span className="text-xs font-medium text-amber-600">Déjà en cours</span>
                             ) : (
-                              <span className="text-xs font-medium text-destructive">Fermé</span>
+                              <span className="text-xs font-medium text-destructive">{service.closingReason}</span>
                             )}
                           </div>
                         </CardContent>
@@ -879,108 +636,57 @@ useEffect(() => {
             </motion.div>
           </AnimatePresence>
 
-          {/* ── Pagination ── */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 mt-10">
-              {/* Précédent */}
-              <button
-                onClick={() => goToPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
+              <button onClick={() => goToPage(Math.max(1, currentPage - 1))} disabled={currentPage === 1}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                 <ChevronRight className="size-4 rotate-180" /> Précédent
               </button>
-
-              {/* Numéros de pages */}
               <div className="flex items-center gap-2">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => goToPage(page)}
-                    className={`size-9 rounded-xl text-sm font-semibold transition-all ${
-                      page === currentPage
-                        ? "bg-primary text-primary-foreground shadow-md shadow-primary/30"
-                        : "border-2 border-border text-muted-foreground hover:border-primary hover:text-primary"
-                    }`}
-                  >
+                  <button key={page} onClick={() => goToPage(page)}
+                    className={`size-9 rounded-xl text-sm font-semibold transition-all ${page === currentPage ? "bg-primary text-primary-foreground" : "border-2 border-border text-muted-foreground hover:border-primary hover:text-primary"}`}>
                     {page}
                   </button>
                 ))}
               </div>
-
-              {/* Suivant */}
-              <button
-                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-                disabled={currentPage === totalPages}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
+              <button onClick={() => goToPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-border text-sm font-medium text-muted-foreground hover:border-primary hover:text-primary transition-all disabled:opacity-30 disabled:cursor-not-allowed">
                 Suivant <ChevronRight className="size-4" />
               </button>
             </div>
           )}
-
-          {/* Lien "Voir tous" uniquement si pas de pagination */}
-          {/* {totalPages <= 1 && (
-            <div className="text-center mt-8">
-              <Button variant="outline" size="lg" onClick={() => onNavigate("services")} className="gap-2 rounded-xl">
-                Voir tous les services <ArrowRight className="size-4" />
-              </Button>
-            </div>
-          )} */}
         </div>
       </section>
 
-      {/* ───────────── DIALOG : SAISIE INFOS PATIENT ───────────── */}
+      {/* DIALOG TICKET */}
       <Dialog open={showTicketModal} onOpenChange={handleCloseTicketModal}>
         <DialogContent className="sm:max-w-md rounded-2xl bg-card">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Prise de ticket instantanée</DialogTitle>
-            <DialogDescription>
-              Service sélectionné : <span className="font-semibold text-primary">{selectedService?.name}</span>.
-              Veuillez entrer vos informations pour recevoir votre numéro.
-            </DialogDescription>
+            <DialogDescription>Service sélectionné : <span className="font-semibold text-primary">{selectedService?.name}</span>. Entrez vos informations pour recevoir votre numéro.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 my-4">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase">Nom complet</label>
-              <Input
-                placeholder="Ex: Aminata Diallo"
-                value={formData.nomComplet}
-                onChange={(e) => setFormData({ ...formData, nomComplet: e.target.value })}
-                className="h-12 rounded-xl border-2"
-              />
+              <Input placeholder="Ex: Aminata Diallo" value={formData.nomComplet} onChange={(e) => setFormData({ ...formData, nomComplet: e.target.value })} className="h-12 rounded-xl border-2" />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase">Numéro de téléphone</label>
-              <Input
-                type="tel"
-                placeholder="Ex: 76XXXXXX"
-                value={formData.telephone}
-                onChange={(e) => handlePhoneChange(e.target.value)}
-                maxLength={8}
-                className="h-12 rounded-xl border-2"
-              />
-              {phoneError && (
-                <p className="text-xs font-medium text-destructive">{phoneError}</p>
-              )}
+              <Input type="tel" placeholder="Ex: 76XXXXXX" value={formData.telephone} onChange={(e) => handlePhoneChange(e.target.value)} maxLength={8} className="h-12 rounded-xl border-2" />
+              {phoneError && <p className="text-xs font-medium text-destructive">{phoneError}</p>}
             </div>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => handleCloseTicketModal(false)}>
-              Annuler
-            </Button>
-            <Button
-              className="flex-1 h-12 bg-primary text-white hover:bg-primary/90 rounded-xl font-semibold"
-              onClick={handleConfirmTicket}
-              disabled={!formData.nomComplet || !formData.telephone || isSubmitting}
-            >
+            <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => handleCloseTicketModal(false)}>Annuler</Button>
+            <Button className="flex-1 h-12 bg-primary text-white hover:bg-primary/90 rounded-xl font-semibold" onClick={handleConfirmTicket} disabled={!formData.nomComplet || !formData.telephone || isSubmitting}>
               {isSubmitting ? "Validation..." : "Confirmer mon rang"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ───────────── DIALOG : SUCCÈS ───────────── */}
+      {/* DIALOG SUCCÈS */}
       <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
         <DialogContent className="sm:max-w-md text-center rounded-2xl bg-card">
           <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -988,63 +694,39 @@ useEffect(() => {
           </div>
           <DialogHeader>
             <DialogTitle className="text-center text-2xl font-bold">Ticket Enregistré !</DialogTitle>
-            <DialogDescription className="text-center text-muted-foreground">
-              Votre rang a bien été calculé pour le service {selectedService?.name}.
-            </DialogDescription>
+            <DialogDescription className="text-center text-muted-foreground">Votre rang a bien été calculé pour le service {selectedService?.name}.</DialogDescription>
           </DialogHeader>
-
           <div className="my-6 rounded-2xl bg-primary/5 p-6 border-2 border-dashed border-primary/20">
             <p className="text-xs font-bold text-primary uppercase tracking-wider">Votre Numéro de Passage</p>
             <p className="text-5xl font-black text-primary mt-1 tracking-tight">
-              {tickets.find(t => t.id === lastCreatedTicketId)?.number || ""}
+              {tickets.find((t) => t.id === lastCreatedTicketId)?.number || ""}
             </p>
           </div>
-
-          <p className="text-xs text-muted-foreground bg-muted p-3 rounded-xl mb-4">
-            💡 Gardez bien ce numéro en tête ou faites une capture d&apos;écran. Il vous sera demandé au guichet d&apos;appel.
-          </p>
-
-          <Button
-            className="w-full bg-primary text-white h-12 rounded-xl font-semibold"
-            onClick={() => {
-              setShowSuccessModal(false)
-              setActiveModalTicketId(lastCreatedTicketId)
-              setTimeout(() => setShowTrackingModal(true), 200)
-            }}
-          >
+          <p className="text-xs text-muted-foreground bg-muted p-3 rounded-xl mb-4">💡 Gardez bien ce numéro ou faites une capture d&apos;écran. Il vous sera demandé au guichet.</p>
+          <Button className="w-full bg-primary text-white h-12 rounded-xl font-semibold" onClick={() => { setShowSuccessModal(false); setActiveModalTicketId(lastCreatedTicketId); setTimeout(() => setShowTrackingModal(true), 200) }}>
             Suivre mon attente en direct
           </Button>
         </DialogContent>
       </Dialog>
 
       {generatedTicket && (
-        <TicketTrackingModal
-          isOpen={showTrackingModal}
-          onClose={() => setShowTrackingModal(false)}
-          ticket={generatedTicket}
-          onCancelTicket={handleCancelTrackedTicket}
-        />
+        <TicketTrackingModal isOpen={showTrackingModal} onClose={() => setShowTrackingModal(false)} ticket={generatedTicket} onCancelTicket={handleCancelTrackedTicket} />
       )}
 
-      {/* ───────────── POURQUOI RANG+ ───────────── */}
+      {/* POURQUOI RANG+ */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
             <Badge variant="secondary" className="mb-4">Pourquoi Rang+ ?</Badge>
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Une expérience patient repensée</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">
-              Découvrez les avantages de notre plateforme de gestion de file d&apos;attente intelligente
-            </p>
+            <p className="text-muted-foreground max-w-xl mx-auto">Découvrez les avantages de notre plateforme de gestion de file d&apos;attente intelligente</p>
           </motion.div>
-
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-6 sm:grid-cols-2">
             {features.map((feature, index) => (
               <motion.div key={index} variants={itemVariants}>
                 <Card className="h-full border-0 shadow-md bg-card">
                   <CardContent className="p-6">
-                    <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
-                      {feature.icon}
-                    </div>
+                    <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">{feature.icon}</div>
                     <h3 className="font-semibold text-foreground text-lg mb-2">{feature.title}</h3>
                     <p className="text-muted-foreground">{feature.description}</p>
                   </CardContent>
@@ -1055,24 +737,21 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* ───────────── COMMENT ÇA MARCHE ───────────── */}
+      {/* COMMENT ÇA MARCHE */}
       <section className="px-6 py-16 lg:py-24">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
             <Badge variant="secondary" className="mb-4">Comment ça marche ?</Badge>
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">3 étapes simples</h2>
           </motion.div>
-
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-8 lg:grid-cols-3">
             {[
               { step: "1", title: "Choisissez votre service", desc: "Sélectionnez le service médical dont vous avez besoin dans la liste" },
               { step: "2", title: "Prenez votre ticket", desc: "Entrez vos informations et recevez votre numéro de ticket instantanément" },
-              { step: "3", title: "Suivez votre position", desc: "Consultez votre rang en temps réel et soyez alerté quand c'est votre tour" }
+              { step: "3", title: "Suivez votre position", desc: "Consultez votre rang en temps réel et soyez alerté quand c'est votre tour" },
             ].map((item, index) => (
               <motion.div key={index} variants={itemVariants} className="text-center">
-                <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg mb-4 shadow-md">
-                  {item.step}
-                </div>
+                <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg mb-4 shadow-md">{item.step}</div>
                 <h3 className="font-semibold text-foreground text-lg mb-2">{item.title}</h3>
                 <p className="text-sm text-muted-foreground">{item.desc}</p>
               </motion.div>
@@ -1081,23 +760,20 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* ───────────── TÉMOIGNAGES ───────────── */}
+      {/* TÉMOIGNAGES */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
             <Badge variant="secondary" className="mb-4">Témoignages</Badge>
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Ce que disent nos patients</h2>
           </motion.div>
-
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-6 lg:grid-cols-3">
             {testimonials.map((testimonial, index) => (
               <motion.div key={index} variants={itemVariants}>
                 <Card className="h-full border-0 shadow-md bg-card">
                   <CardContent className="p-6">
                     <div className="flex gap-1 mb-4">
-                      {Array.from({ length: testimonial.rating }).map((_, i) => (
-                        <Star key={i} className="size-4 fill-primary text-primary" />
-                      ))}
+                      {Array.from({ length: testimonial.rating }).map((_, i) => (<Star key={i} className="size-4 fill-primary text-primary" />))}
                     </div>
                     <p className="text-muted-foreground mb-4 italic">&quot;{testimonial.text}&quot;</p>
                     <p className="font-semibold text-foreground">{testimonial.name}</p>
@@ -1109,106 +785,64 @@ useEffect(() => {
         </div>
       </section>
 
-      {/* ───────────── CTA ───────────── */}
+      {/* CTA */}
       <section className="px-6 py-16 lg:py-24">
         <motion.div initial={{ opacity: 0, scale: 0.95 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="mx-auto max-w-4xl">
           <Card className="overflow-hidden border-0 bg-primary text-primary-foreground">
             <CardContent className="p-8 lg:p-12 text-center">
               <h2 className="text-2xl lg:text-3xl font-bold mb-4">Prêt à gagner du temps ?</h2>
-              <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">
-                Rejoignez les milliers de patients qui utilisent déjà Rang+ pour éviter les files d&apos;attente
-              </p>
+              <p className="text-primary-foreground/80 mb-8 max-w-xl mx-auto">Rejoignez les milliers de patients qui utilisent déjà Rang+ pour éviter les files d&apos;attente</p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Button size="lg" variant="secondary" onClick={onTakeTicket} className="h-14 px-8 gap-3 rounded-2xl text-lg font-semibold w-full sm:w-auto">
-                  <CheckCircle2 className="size-5" /> Prendre mon Ticket
-                </Button>
-                <Button size="lg" variant="outline" onClick={onScanQR} className="h-14 px-8 gap-3 rounded-2xl text-lg font-semibold bg-transparent border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 w-full sm:w-auto">
-                  <QrCode className="size-5" /> Scanner QR
-                </Button>
+                <Button size="lg" variant="secondary" onClick={onTakeTicket} className="h-14 px-8 gap-3 rounded-2xl text-lg font-semibold w-full sm:w-auto"><CheckCircle2 className="size-5" /> Prendre mon Ticket</Button>
+                <Button size="lg" variant="outline" onClick={onScanQR} className="h-14 px-8 gap-3 rounded-2xl text-lg font-semibold bg-transparent border-2 border-primary-foreground/30 hover:bg-primary-foreground/10 w-full sm:w-auto"><QrCode className="size-5" /> Scanner QR</Button>
               </div>
             </CardContent>
           </Card>
         </motion.div>
       </section>
 
-      {/* ───────────── FOOTER ───────────── */}
+      {/* FOOTER */}
       <footer id="contact-section" className="px-6 py-12 bg-foreground text-background">
         <div className="mx-auto max-w-4xl">
           <div className="grid gap-8 lg:grid-cols-3 mb-8">
             <div>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex flex-col items-start">
-                  <img
-                    onClick={() => onNavigate("#")}
-                    src="/placeholder-logo-white.svg"
-                    alt="Rang+"
-                    className="h-8 w-auto cursor-pointer"
-                  />
-                  <span className="text-[11px] font-semibold text-background/70 italic tracking-tight mt-0.5">
-                    Hôpital du Mali
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-background/60">
-                Votre santé, notre priorité. Gestion intelligente des files d&apos;attente hospitalières.
-              </p>
+              <img onClick={() => onNavigate("#")} src="/placeholder-logo-white.svg" alt="Rang+" className="h-8 w-auto cursor-pointer mb-1" />
+              <span className="text-[11px] font-semibold text-background/70 italic tracking-tight">Hôpital du Mali</span>
+              <p className="text-sm text-background/60 mt-3">Votre santé, notre priorité. Gestion intelligente des files d&apos;attente hospitalières.</p>
             </div>
-
             <div>
               <h4 className="font-semibold mb-4">Contact</h4>
               <div className="space-y-2 text-sm text-background/60">
-                <div className="flex items-center gap-2">
-                  <MapPin className="size-4" />
-                  <span>Bamako, Mali</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="size-4" />
-                  <span>+223 20 22 50 02</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="size-4" />
-                  <span>contact@hopitaldumali.ml</span>
-                </div>
+                <div className="flex items-center gap-2"><MapPin className="size-4" /><span>Bamako, Mali</span></div>
+                <div className="flex items-center gap-2"><Phone className="size-4" /><span>+223 20 22 50 02</span></div>
+                <div className="flex items-center gap-2"><Mail className="size-4" /><span>contact@hopitaldumali.ml</span></div>
               </div>
             </div>
-
             <div>
               <h4 className="font-semibold mb-4">Horaires</h4>
               <div className="space-y-2 text-sm text-background/60">
-                <p>Lundi - Vendredi: 7h00 - 18h00</p>
-                <p>Samedi: 8h00 - 14h00</p>
-                <p>Urgences: 24h/24, 7j/7</p>
+                <p>Lundi - Vendredi : 7h00 - 18h00</p>
+                <p>Samedi : 8h00 - 14h00</p>
+                <p>Urgences : 24h/24, 7j/7</p>
               </div>
             </div>
           </div>
-
           <div className="border-t border-background/10 pt-8 text-center text-sm text-background/60">
             <p>&copy; 2026 Hôpital du Mali - Rang+. Tous droits réservés.</p>
           </div>
         </div>
       </footer>
 
-      {/* ───────────── BOUTON FLOTTANT ───────────── */}
+      {/* BOUTON FLOTTANT */}
       <AnimatePresence>
         {generatedTicket && !showTrackingModal && (
-          <motion.div
-            initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 20 }}
-            className="fixed bottom-6 right-6 z-50"
-          >
-            <Button
-              onClick={openTrackingModal}
-              className="h-14 px-5 rounded-2xl bg-primary text-white font-bold shadow-2xl flex items-center gap-3 border border-white/20 hover:scale-105 transition-transform"
-            >
+          <motion.div initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8, y: 20 }} className="fixed bottom-6 right-6 z-50">
+            <Button onClick={openTrackingModal} className="h-14 px-5 rounded-2xl bg-primary text-white font-bold shadow-2xl flex items-center gap-3 border border-white/20 hover:scale-105 transition-transform">
               <div className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
               </div>
-              <span>
-                Ticket {generatedTicket.number} ({generatedTicket.queuePos || 1}e)
-                {trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""}
-              </span>
+              <span>Ticket {generatedTicket.number} ({generatedTicket.queuePos || 1}e){trackedActiveTickets.length > 1 ? ` +${trackedActiveTickets.length - 1}` : ""}</span>
               <Eye className="size-5 ml-1 opacity-80" />
             </Button>
           </motion.div>
