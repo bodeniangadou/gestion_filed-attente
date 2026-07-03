@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Search, Clock, Users, Stethoscope, Siren, ScanLine, FlaskConical, Pill, HeartPulse, Plus, QrCode, Ban } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -15,8 +15,11 @@ import { Html5Qrcode } from "html5-qrcode"
 import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
 
-function generateUniqueTicketCode(servicePrefix: string, position: number): string {
-  return `${servicePrefix}-${String(position).padStart(3, "0")}`
+function generateUniqueTicketCode(servicePrefix: string): string {
+  // Basé sur timestamp + random pour éviter les doublons même si la file repart à 0
+  const ts = Date.now().toString(36).toUpperCase().slice(-4)
+  const rand = Math.floor(Math.random() * 100).toString().padStart(2, "0")
+  return `${servicePrefix}-${ts}${rand}`
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -59,11 +62,8 @@ function getServiceAvailability(
   agents: ReturnType<typeof useApp>["agents"]
 ): { isEffectivelyActive: boolean; closingReason: string } {
   if (!service.isActive) return { isEffectivelyActive: false, closingReason: "Fermé" }
-
   const isTimeOpen = isWithinOperatingHours(service.openTime, service.closeTime)
   if (!isTimeOpen) return { isEffectivelyActive: false, closingReason: "Hors Horaires" }
-
-  
   const hasAvailableAgent = counters.some(
     counter =>
       counter.serviceId === service.id &&
@@ -75,9 +75,7 @@ function getServiceAvailability(
           !agent.est_banni
       )
   )
-
   if (!hasAvailableAgent) return { isEffectivelyActive: false, closingReason: "Aucun Guichet Dispo" }
-
   return { isEffectivelyActive: true, closingReason: "" }
 }
 
@@ -97,6 +95,10 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
   const [localTakenServices, setLocalTakenServices] = useState<string[]>([])
 
+  // ── CORRECTION BUG TOAST : on garde en mémoire si l'URL a déjà été traitée
+  // pour ne pas relancer handleTakeTicket à chaque retour sur la page
+  const handledScanParam = useRef<string | null>(null)
+
   const filteredServices = services.filter(service =>
     service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     service.description.toLowerCase().includes(searchQuery.toLowerCase())
@@ -104,7 +106,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
   const isRealPatient = user && user.role?.toLowerCase() === "patient"
 
-  const handleTakeTicket = async (service: Service) => {
+  const handleTakeTicket = useCallback(async (service: Service) => {
     const { isEffectivelyActive, closingReason } = getServiceAvailability(service, counters, agents)
 
     if (!isEffectivelyActive) {
@@ -161,7 +163,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
         const currentPosition = calculateQueue(service.id, tickets) + 1
         const servicePrefix = service.name.substring(0, 1).toUpperCase()
-        const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
+        const ticketNumber = generateUniqueTicketCode(servicePrefix)
 
         const { data, error } = await supabase
           .from("ticket")
@@ -185,7 +187,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         setNewTicket({ code: data.code, service: service.name, counterName: targetCounter.name, position: currentPosition })
         setShowSuccessModal(true)
         toast.success("Ticket créé avec succès !")
-        router.refresh()
 
       } catch (err) {
         console.error(err)
@@ -194,7 +195,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     } else {
       setShowTicketModal(true)
     }
-  }
+  }, [services, counters, agents, tickets, user, isAdmin, isRealPatient, localTakenServices, fetchTickets])
 
   const handleSubmitForm = async () => {
     if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
@@ -220,7 +221,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
       const currentPosition = calculateQueue(selectedService.id, tickets) + 1
       const servicePrefix = selectedService.name.substring(0, 1).toUpperCase()
-      const ticketNumber = generateUniqueTicketCode(servicePrefix, currentPosition)
+      const ticketNumber = generateUniqueTicketCode(servicePrefix)
 
       const { data, error } = await supabase
         .from("ticket")
@@ -246,7 +247,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
       setShowSuccessModal(true)
       setFormData({ nom: "", prenom: "" })
       toast.success("Ticket créé !")
-      router.refresh()
 
     } catch (err) {
       console.error(err)
@@ -254,21 +254,33 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     }
   }
 
+  // ── CORRECTION BUG TOAST : on vérifie que le paramètre n'a pas déjà été traité
   useEffect(() => {
     const serviceId = searchParams.get("scan") || searchParams.get("service")
-    if (serviceId && services.length > 0 && !selectedService) {
-      const targetService = services.find(s => s.id === serviceId)
-      if (targetService) {
-        const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents)
-        if (isEffectivelyActive) {
-          handleTakeTicket(targetService)
-        } else {
-          toast.error("Service indisponible", { description: closingReason })
-        }
-        router.replace(window.location.pathname)
-      }
+
+    if (!serviceId) return
+    if (services.length === 0) return
+
+    // Si ce paramètre a déjà été traité lors de cette session de navigation, on ignore
+    if (handledScanParam.current === serviceId) return
+
+    const targetService = services.find(s => s.id === serviceId)
+    if (!targetService) return
+
+    // On marque ce paramètre comme traité AVANT de lancer l'action
+    handledScanParam.current = serviceId
+
+    // On nettoie l'URL immédiatement pour éviter toute réexécution
+    router.replace(window.location.pathname)
+
+    const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents)
+    if (isEffectivelyActive) {
+      handleTakeTicket(targetService)
+    } else {
+      toast.error("Service indisponible", { description: closingReason })
     }
-  }, [searchParams, services, selectedService, counters, agents])
+
+  }, [searchParams, services, counters, agents, handleTakeTicket, router])
 
   useEffect(() => {
     if (showScannerModal && services.length > 0) {
@@ -289,10 +301,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
               return
             }
 
-            // CORRIGÉ : on utilise getServiceAvailability — la même fonction que la liste.
-            // Avant, le scanner n'appliquait pas la vérification de l'agent, ce qui
-            // permettait de scanner un service "Aucun guichet dispo" et de prendre quand
-            // même un ticket dessus.
             const { isEffectivelyActive, closingReason } = getServiceAvailability(matchedService, counters, agents)
 
             if (!isEffectivelyActive) {
@@ -339,7 +347,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         html5QrCodeRef.current.stop().catch(err => console.error(err))
       }
     }
-  }, [showScannerModal, services, tickets, localTakenServices, user, counters, agents])
+  }, [showScannerModal, services, tickets, localTakenServices, user, counters, agents, handleTakeTicket])
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
