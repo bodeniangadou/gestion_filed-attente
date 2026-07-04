@@ -11,6 +11,9 @@ export default function HomePage() {
   const router = useRouter()
   const [isLoginOpen, setIsLoginOpen] = useState(false)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  // NOUVEAU : au lieu de router.push, on passe l'id directement comme prop React
+  // pour que LandingView réagisse instantanément via useEffect
+  const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
 
   const handleTakeTicket = () => {
     const element = document.getElementById("services-section")
@@ -29,9 +32,11 @@ export default function HomePage() {
     setIsLoginOpen(true)
   }
 
-  
   const handleServiceScanned = (service: Service) => {
-    router.push(`/?service=${service.id}`)
+    // CORRIGÉ : on ne fait plus router.push (qui ne retrigger pas le useEffect)
+    // on passe l'id comme état React — LandingView le surveille et ouvre le modal
+    setIsScannerOpen(false)
+    setPendingServiceId(service.id)
   }
 
   return (
@@ -41,6 +46,8 @@ export default function HomePage() {
         onScanQR={handleScanQR}
         onTakeTicket={handleTakeTicket}
         onLogin={handleLogin}
+        pendingServiceId={pendingServiceId}
+        onPendingServiceConsumed={() => setPendingServiceId(null)}
       />
 
       <LoginModal

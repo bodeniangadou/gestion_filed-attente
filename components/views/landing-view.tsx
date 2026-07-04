@@ -7,13 +7,16 @@ import { motion, AnimatePresence } from "framer-motion"
 import {
   Search, Eye, QrCode, Building2, Clock, Users, CheckCircle2,
   Smartphone, Bell, Shield, ChevronRight, MapPin, Phone, Mail,
-  Stethoscope, ArrowRight, Star, LogIn, Menu, X, UserPlus, RefreshCw
+  Stethoscope, Star, LogIn, Menu, X, UserPlus, RefreshCw
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import {
+  Dialog, DialogContent, DialogHeader,
+  DialogTitle, DialogDescription
+} from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { useApp, Service, Counter, Ticket } from "@/lib/app-context"
 import { TicketTrackingModal } from "./TicketTrackingModal"
@@ -23,6 +26,9 @@ interface LandingViewProps {
   onScanQR: () => void
   onTakeTicket: () => void
   onLogin: () => void
+  // NOUVEAU : service scanné transmis depuis page.tsx comme prop React
+  pendingServiceId?: string | null
+  onPendingServiceConsumed?: () => void
 }
 
 const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
@@ -43,47 +49,34 @@ const testimonials = [
   { name: "Fatoumata K.", text: "Le suivi en temps réel me permet de mieux gérer mon temps. Merci Rang+ !", rating: 5 },
 ]
 
-// ALIGNÉ sur ServicesView : un service est réellement actif seulement si
-// service.isActive + horaires valides + guichet actif avec agent en ligne non banni.
-// Avant, on ne vérifiait que les horaires et l'existence d'un guichet actif —
-// ce qui pouvait afficher un service comme disponible sans agent pour répondre.
+// Logique de disponibilité — source unique utilisée partout
 const checkServiceStatus = (
   service: Service,
   counters: Counter[],
   agents: { id: string; isOnline: boolean; est_banni: boolean }[]
-) => {
+): boolean => {
   if (!service.isActive) return false
   if (!service?.openTime || !service?.closeTime) return false
-
   const now = new Date()
-  const currentMinutes = now.getHours() * 60 + now.getMinutes()
-  const [startH, startM] = service.openTime.split(":").map(Number)
-  const [endH, endM] = service.closeTime.split(":").map(Number)
-  const isTimeValid =
-    currentMinutes >= startH * 60 + startM &&
-    currentMinutes <= endH * 60 + endM
-
-  const hasAvailableAgent = counters.some(
-    (counter) =>
-      counter.serviceId === service.id &&
-      counter.isActive &&
+  const cur = now.getHours() * 60 + now.getMinutes()
+  const [sh, sm] = service.openTime.split(":").map(Number)
+  const [eh, em] = service.closeTime.split(":").map(Number)
+  if (cur < sh * 60 + sm || cur > eh * 60 + em) return false
+  return counters.some(
+    (c) =>
+      c.serviceId === service.id &&
+      c.isActive &&
       agents.some(
-        (agent) =>
-          agent.id === (counter as any).id_agent_actuel &&
-          agent.isOnline &&
-          !agent.est_banni
+        (a) => a.id === (c as any).id_agent_actuel && a.isOnline && !a.est_banni
       )
   )
-
-  return isTimeValid && hasAvailableAgent
 }
 
-// Raison lisible de fermeture — même logique que ServicesView
 const getClosingReason = (
   service: Service,
   counters: Counter[],
   agents: { id: string; isOnline: boolean; est_banni: boolean }[]
-) => {
+): string => {
   if (!service.isActive) return "Fermé"
   const now = new Date()
   const cur = now.getHours() * 60 + now.getMinutes()
@@ -100,27 +93,51 @@ const getClosingReason = (
   return "Indisponible"
 }
 
-function getServicePrefix(serviceName: string): string {
-  const cleaned = serviceName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase()
-  return cleaned.replace(/[^A-Z]/g, "").substring(0, 1) || "X"
+function getServicePrefix(name: string): string {
+  return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z]/g, "").substring(0, 1) || "X"
 }
 
-function generateUniqueTicketCode(serviceName: string, sequenceNumber: number): string {
-  return `${getServicePrefix(serviceName)}${String(sequenceNumber).padStart(3, "0")}`
+// CORRIGÉ : génère le numéro avec le compteur du jour passé en paramètre
+function generateDailyTicketCode(serviceName: string, todayCount: number): string {
+  return `${getServicePrefix(serviceName)}${String(todayCount).padStart(3, "0")}`
 }
 
-const calculateQueuePosition = (serviceId: string, allTickets: { service?: { id?: string }; statut: string }[]) =>
+// NOUVEAU : compte les tickets du jour pour ce service dans Supabase
+// Reset automatique chaque jour — on ne compte que ceux créés aujourd'hui
+async function getTodayTicketCount(serviceId: string): Promise<number> {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayISO = today.toISOString()
+
+  const { count, error } = await supabase
+    .from("ticket")
+    .select("id", { count: "exact", head: true })
+    .eq("id_service", serviceId)
+    .gte("created_at", todayISO)
+
+  if (error) {
+    console.error("Erreur comptage tickets du jour:", error)
+    return 0
+  }
+  return count ?? 0
+}
+
+const calculateQueuePosition = (serviceId: string, allTickets: Ticket[]) =>
   allTickets.filter((t) => t.service?.id === serviceId && t.statut === "waiting").length
-
-const countAllTicketsForService = (serviceId: string, allTickets: { service?: { id?: string } }[]) =>
-  allTickets.filter((t) => t.service?.id === serviceId).length
 
 const isValidPhone = (phone: string) => /^\d{8}$/.test(phone.trim())
 
 const ACTIVE_STATUSES = ["waiting", "called", "serving"]
 const SERVICES_PER_PAGE = 6
 
-export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: LandingViewProps) {
+export function LandingView({
+  onNavigate,
+  onScanQR,
+  onTakeTicket,
+  onLogin,
+  pendingServiceId,
+  onPendingServiceConsumed,
+}: LandingViewProps) {
   const { services, counters, tickets, agents, fetchTickets } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -214,7 +231,6 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
 
   const totalWaiting = tickets.filter((t) => t.statut === "waiting").length
 
-  // CORRIGÉ : on passe agents à checkServiceStatus pour la vérification complète
   const servicesWithStatus = useMemo(() =>
     services.map((s) => ({
       ...s,
@@ -229,8 +245,13 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   const hasActiveTicketForService = (serviceId: string) =>
     trackedActiveTickets.some((t) => t.service?.id === serviceId)
 
-  const handleOpenTicketModal = (service: Service & { isActive: boolean }) => {
-    if (!service.isActive) return
+  const handleOpenTicketModal = (service: Service & { isActive: boolean; closingReason?: string }) => {
+    if (!service.isActive) {
+      toast.error("Service indisponible", {
+        description: service.closingReason || "Ce service n'est pas disponible actuellement.",
+      })
+      return
+    }
     if (hasActiveTicketForService(service.id)) {
       toast.error("Ticket déjà en cours", {
         description: `Vous avez déjà un ticket actif pour le service ${service.name}.`,
@@ -241,6 +262,43 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     setShowTicketModal(true)
   }
 
+  // CORRIGÉ : surveille pendingServiceId (prop React) au lieu de window.location.search
+  // Avant, on lisait l'URL mais le useEffect ne se redéclenchait pas quand l'URL changeait
+  // car ses dépendances (services, selectedService...) ne bougeaient pas.
+  useEffect(() => {
+    if (!pendingServiceId || services.length === 0) return
+
+    const serviceToSelect = services.find((s) => s.id === pendingServiceId)
+    if (!serviceToSelect) {
+      toast.error("Service introuvable", {
+        description: "Ce QR code ne correspond à aucun service connu.",
+      })
+      onPendingServiceConsumed?.()
+      return
+    }
+
+    const enriched = servicesWithStatus.find((s) => s.id === pendingServiceId)
+    const isReallyActive = enriched?.isActive ?? false
+
+    if (!isReallyActive) {
+      toast.error("Service indisponible", {
+        description: `${serviceToSelect.name} : ${enriched?.closingReason || "indisponible"}.`,
+      })
+    } else if (hasActiveTicketForService(pendingServiceId)) {
+      toast.error("Ticket déjà en cours", {
+        description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`,
+      })
+    } else {
+      setSelectedService(serviceToSelect)
+      setShowTicketModal(true)
+    }
+
+    // Consomme le pending pour éviter une boucle
+    onPendingServiceConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingServiceId, services, servicesWithStatus])
+
+  // Lecture URL initiale (scan QR depuis URL directe ou partage de lien)
   useEffect(() => {
     if (services.length === 0 || selectedService) return
     const serviceId =
@@ -253,18 +311,19 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
     const isReallyActive = enriched?.isActive ?? false
     if (!isReallyActive) {
       toast.error("Service indisponible", {
-        description: `Le service ${serviceToSelect.name} n'est pas disponible (${enriched?.closingReason || "indisponible"}).`,
+        description: `${serviceToSelect.name} : ${enriched?.closingReason || "indisponible"}.`,
       })
     } else if (hasActiveTicketForService(serviceId)) {
       toast.error("Ticket déjà en cours", {
         description: `Vous avez déjà un ticket actif pour le service ${serviceToSelect.name}.`,
       })
     } else {
-      handleOpenTicketModal({ ...serviceToSelect, isActive: true, closingReason: "" })
+      setSelectedService(serviceToSelect)
+      setShowTicketModal(true)
     }
     window.history.replaceState({}, document.title, window.location.pathname)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services, servicesWithStatus, selectedService, trackedActiveTickets])
+  }, [services, servicesWithStatus])
 
   const avgWaitTime = useMemo(() => {
     const active = servicesWithStatus.filter((s) => s.isActive)
@@ -328,30 +387,39 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
       const fullName = formData.nomComplet.trim()
       const phoneValue = formData.telephone.trim()
 
+      // Vérification doublon par nom
       const { data: byName, error: e1 } = await supabase
-        .from("ticket").select("id").ilike("patient_nom", fullName)
+        .from("ticket")
+        .select("id")
+        .ilike("patient_nom", fullName)
         .eq("id_service", selectedService.id)
         .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
       if (e1) throw e1
       if (byName && byName.length > 0) {
         toast.error("Ticket déjà actif", { description: `Un ticket actif existe déjà au nom de ${fullName}.` })
-        setIsSubmitting(false); return
+        setIsSubmitting(false)
+        return
       }
 
+      // Vérification doublon par téléphone
       const { data: byPhone, error: e2 } = await supabase
-        .from("ticket").select("id").eq("telephone_patient", phoneValue)
+        .from("ticket")
+        .select("id")
+        .eq("telephone_patient", phoneValue)
         .eq("id_service", selectedService.id)
         .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
       if (e2) throw e2
       if (byPhone && byPhone.length > 0) {
         toast.error("Ticket déjà actif", { description: "Ce numéro a déjà un ticket actif pour ce service." })
-        setIsSubmitting(false); return
+        setIsSubmitting(false)
+        return
       }
 
       const activeCounters = counters.filter((c) => c.serviceId === selectedService.id && c.isActive)
       if (activeCounters.length === 0) {
         toast.error("Service indisponible", { description: "Aucun guichet disponible." })
-        setIsSubmitting(false); return
+        setIsSubmitting(false)
+        return
       }
 
       let targetCounter = activeCounters[0]
@@ -361,8 +429,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         if (w < minWaiting) { minWaiting = w; targetCounter = counter }
       })
 
-      const sequenceNumber = countAllTicketsForService(selectedService.id, tickets) + 1
-      const ticketNumber = generateUniqueTicketCode(selectedService.name, sequenceNumber)
+      // CORRIGÉ : comptage du jour seulement → numéro repart de 1 chaque jour
+      const todayCount = await getTodayTicketCount(selectedService.id)
+      const ticketNumber = generateDailyTicketCode(selectedService.name, todayCount + 1)
 
       const { data, error } = await supabase
         .from("ticket")
@@ -375,7 +444,8 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           patient_nom: fullName,
           telephone_patient: phoneValue,
         }])
-        .select().single()
+        .select()
+        .single()
       if (error) throw error
 
       await fetchTickets()
@@ -394,8 +464,14 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
   }
 
   const handleCloseTicketModal = (open: boolean) => {
-    if (!open) { setShowTicketModal(false); setFormData({ nomComplet: "", telephone: "" }); setPhoneError(null) }
-    else setShowTicketModal(true)
+    if (!open) {
+      setShowTicketModal(false)
+      setSelectedService(null)
+      setFormData({ nomComplet: "", telephone: "" })
+      setPhoneError(null)
+    } else {
+      setShowTicketModal(true)
+    }
   }
 
   const handleCancelTrackedTicket = async () => {
@@ -468,9 +544,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         {mobileMenuOpen && (
           <motion.div initial={isMounted ? { opacity: 0, y: -10 } : false} animate={{ opacity: 1, y: 0 }} className="md:hidden border-t border-border bg-background">
             <div className="flex flex-col p-4 gap-2">
-              <a href="#services-section" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl font-medium hover:bg-muted transition-colors">
+              <button onClick={() => { document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" }); setMobileMenuOpen(false) }} className="flex items-center gap-3 p-3 rounded-xl font-medium hover:bg-muted transition-colors text-left">
                 <Stethoscope className="size-5 text-primary" /> Services
-              </a>
+              </button>
               <button onClick={() => { onTakeTicket(); setMobileMenuOpen(false) }} className="flex items-center gap-3 p-3 rounded-xl text-left font-medium hover:bg-muted transition-colors">
                 <CheckCircle2 className="size-5 text-primary" /> Prendre un ticket
               </button>
@@ -494,13 +570,13 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           <motion.div initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-4xl text-center">
             <Badge variant="secondary" className="mb-4 px-4 py-1.5 text-sm font-medium">Plateforme officielle de gestion des files d&apos;attente</Badge>
             <motion.h1 initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-4 text-4xl font-bold tracking-tight text-foreground lg:text-6xl text-balance">
-              Bienvenue à l&apos; <span className="text-primary">Hôpital du Mali</span>
+              Bienvenue à l&apos;<span className="text-primary">Hôpital du Mali</span>
             </motion.h1>
             <motion.p initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mb-8 text-lg text-muted-foreground lg:text-xl max-w-2xl mx-auto">
-              Avec <span className="font-semibold text-primary">Rang+</span>, prenez votre ticket en ligne et suivez votre position dans la file d&apos;attente en temps réel. Fini les longues heures d&apos;attente inutiles !
+              Avec <span className="font-semibold text-primary">Rang+</span>, prenez votre ticket en ligne et suivez votre position dans la file d&apos;attente en temps réel.
             </motion.p>
             <motion.div initial={isMounted ? { opacity: 0, y: 20 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button size="lg" onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })} className="h-14 px-8 gap-3 rounded-2xl bg-primary text-lg font-semibold shadow-lg w-full sm:w-auto">
+              <Button size="lg" onClick={() => document.getElementById("services-section")?.scrollIntoView({ behavior: "smooth" })} className="h-14 px-8 gap-3 rounded-2xl text-lg font-semibold shadow-lg w-full sm:w-auto">
                 <CheckCircle2 className="size-5" /> Prendre un ticket
               </Button>
               <Button size="lg" variant="outline" onClick={onScanQR} className="h-14 px-8 gap-3 rounded-2xl border-2 text-lg font-semibold hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all w-full sm:w-auto">
@@ -578,6 +654,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
               ) : (
                 paginatedServices.map((service) => {
                   const hasTicketHere = hasActiveTicketForService(service.id)
+                  const waitingCount = tickets.filter((t) => t.service?.id === service.id && t.statut === "waiting").length
                   return (
                     <motion.div key={service.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
                       <Card
@@ -605,7 +682,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
                                 {hasTicketHere
                                   ? "Ticket actif"
                                   : service.isActive
-                                  ? `${tickets.filter((t) => t.service?.id === service.id && t.statut === "waiting").length} en attente`
+                                  ? `${waitingCount} en attente`
                                   : service.closingReason}
                               </Badge>
                             </div>
@@ -615,7 +692,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
                           <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Clock className="size-4" />
-                              <span>{service.isActive ? `~${service.waitTime} min` : "Indisponible"}</span>
+                              <span>{service.isActive ? `~${service.waitTime || 10} min` : "Indisponible"}</span>
                             </div>
                             {service.isActive && !hasTicketHere ? (
                               <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
@@ -664,7 +741,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         <DialogContent className="sm:max-w-md rounded-2xl bg-card">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Prise de ticket instantanée</DialogTitle>
-            <DialogDescription>Service sélectionné : <span className="font-semibold text-primary">{selectedService?.name}</span>. Entrez vos informations pour recevoir votre numéro.</DialogDescription>
+            <DialogDescription>
+              Service : <span className="font-semibold text-primary">{selectedService?.name}</span>. Entrez vos informations pour recevoir votre numéro.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 my-4">
             <div className="space-y-1.5">
@@ -679,7 +758,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           </div>
           <div className="flex gap-3">
             <Button variant="outline" className="flex-1 h-12 rounded-xl" onClick={() => handleCloseTicketModal(false)}>Annuler</Button>
-            <Button className="flex-1 h-12 bg-primary text-white hover:bg-primary/90 rounded-xl font-semibold" onClick={handleConfirmTicket} disabled={!formData.nomComplet || !formData.telephone || isSubmitting}>
+            <Button className="flex-1 h-12 rounded-xl font-semibold" onClick={handleConfirmTicket} disabled={!formData.nomComplet || !formData.telephone || isSubmitting}>
               {isSubmitting ? "Validation..." : "Confirmer mon rang"}
             </Button>
           </div>
@@ -694,7 +773,7 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
           </div>
           <DialogHeader>
             <DialogTitle className="text-center text-2xl font-bold">Ticket Enregistré !</DialogTitle>
-            <DialogDescription className="text-center text-muted-foreground">Votre rang a bien été calculé pour le service {selectedService?.name}.</DialogDescription>
+            <DialogDescription className="text-center">Votre rang a bien été calculé pour le service {selectedService?.name}.</DialogDescription>
           </DialogHeader>
           <div className="my-6 rounded-2xl bg-primary/5 p-6 border-2 border-dashed border-primary/20">
             <p className="text-xs font-bold text-primary uppercase tracking-wider">Votre Numéro de Passage</p>
@@ -702,24 +781,34 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
               {tickets.find((t) => t.id === lastCreatedTicketId)?.number || ""}
             </p>
           </div>
-          <p className="text-xs text-muted-foreground bg-muted p-3 rounded-xl mb-4">💡 Gardez bien ce numéro ou faites une capture d&apos;écran. Il vous sera demandé au guichet.</p>
-          <Button className="w-full bg-primary text-white h-12 rounded-xl font-semibold" onClick={() => { setShowSuccessModal(false); setActiveModalTicketId(lastCreatedTicketId); setTimeout(() => setShowTrackingModal(true), 200) }}>
+          <p className="text-xs text-muted-foreground bg-muted p-3 rounded-xl mb-4">
+            💡 Gardez bien ce numéro ou faites une capture d&apos;écran. Il vous sera demandé au guichet.
+          </p>
+          <Button className="w-full h-12 rounded-xl font-semibold" onClick={() => {
+            setShowSuccessModal(false)
+            setActiveModalTicketId(lastCreatedTicketId)
+            setTimeout(() => setShowTrackingModal(true), 200)
+          }}>
             Suivre mon attente en direct
           </Button>
         </DialogContent>
       </Dialog>
 
       {generatedTicket && (
-        <TicketTrackingModal isOpen={showTrackingModal} onClose={() => setShowTrackingModal(false)} ticket={generatedTicket} onCancelTicket={handleCancelTrackedTicket} />
+        <TicketTrackingModal
+          isOpen={showTrackingModal}
+          onClose={() => setShowTrackingModal(false)}
+          ticket={generatedTicket}
+          onCancelTicket={handleCancelTrackedTicket}
+        />
       )}
 
-      {/* POURQUOI RANG+ */}
+      {/* FEATURES */}
       <section className="px-6 py-16 lg:py-24 bg-muted/30">
         <div className="mx-auto max-w-4xl">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12">
             <Badge variant="secondary" className="mb-4">Pourquoi Rang+ ?</Badge>
             <h2 className="text-2xl lg:text-3xl font-bold text-foreground mb-4">Une expérience patient repensée</h2>
-            <p className="text-muted-foreground max-w-xl mx-auto">Découvrez les avantages de notre plateforme de gestion de file d&apos;attente intelligente</p>
           </motion.div>
           <motion.div variants={containerVariants} initial="hidden" whileInView="visible" viewport={{ once: true }} className="grid gap-6 sm:grid-cols-2">
             {features.map((feature, index) => (
@@ -806,9 +895,9 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
         <div className="mx-auto max-w-4xl">
           <div className="grid gap-8 lg:grid-cols-3 mb-8">
             <div>
-              <img onClick={() => onNavigate("#")} src="/placeholder-logo-white.svg" alt="Rang+" className="h-8 w-auto cursor-pointer mb-1" />
+              <img src="/placeholder-logo-white.svg" alt="Rang+" className="h-8 w-auto cursor-pointer mb-1" />
               <span className="text-[11px] font-semibold text-background/70 italic tracking-tight">Hôpital du Mali</span>
-              <p className="text-sm text-background/60 mt-3">Votre santé, notre priorité. Gestion intelligente des files d&apos;attente hospitalières.</p>
+              <p className="text-sm text-background/60 mt-3">Votre santé, notre priorité.</p>
             </div>
             <div>
               <h4 className="font-semibold mb-4">Contact</h4>
@@ -828,12 +917,12 @@ export function LandingView({ onNavigate, onScanQR, onTakeTicket, onLogin }: Lan
             </div>
           </div>
           <div className="border-t border-background/10 pt-8 text-center text-sm text-background/60">
-            <p>&copy; 2026 Hôpital du Mali - Rang+. Tous droits réservés.</p>
+            <p>&copy; 2026 Hôpital du Mali — Rang+. Tous droits réservés.</p>
           </div>
         </div>
       </footer>
 
-      {/* BOUTON FLOTTANT */}
+      {/* BOUTON FLOTTANT TICKET ACTIF */}
       <AnimatePresence>
         {generatedTicket && !showTrackingModal && (
           <motion.div initial={isMounted ? { opacity: 0, scale: 0.8, y: 20 } : false} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8, y: 20 }} className="fixed bottom-6 right-6 z-50">

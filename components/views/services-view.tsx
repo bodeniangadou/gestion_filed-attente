@@ -15,13 +15,14 @@ import { Html5Qrcode } from "html5-qrcode"
 import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
 
-function generateTicketCode(servicePrefix: string, totalTicketsInService: number): string {
-  // On incrémente de 1 pour le nouveau ticket
-  const nextNumber = totalTicketsInService + 1;
-  // .padStart(3, '0') transforme 1 en "001", 12 en "012", etc.
-  const formattedNumber = nextNumber.toString().padStart(3, '0');
-  
-  return `${servicePrefix.toUpperCase()}${formattedNumber}`;
+// FORMAT : {Préfixe}{numéro padStart 3}
+// ex: C001, C047, C124, C1000
+// Le préfixe = 1ère lettre du nom du service (sans accent, majuscule)
+// Le numéro = total historique de tickets pour CE service en BDD + 1
+// → jamais de doublon sur toute la durée de vie du service
+function generateTicketCode(servicePrefix: string, totalHistorique: number): string {
+  const nextNumber = totalHistorique + 1
+  return `${servicePrefix.toUpperCase()}${String(nextNumber).padStart(3, "0")}`
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -42,7 +43,7 @@ const calculateQueue = (serviceId: string, allTickets: Ticket[]) =>
 
 const isWithinOperatingHours = (openTime: string, closeTime: string) => {
   const now = new Date()
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`
   return currentTime >= openTime && currentTime <= closeTime
 }
 
@@ -97,8 +98,8 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
   const [localTakenServices, setLocalTakenServices] = useState<string[]>([])
 
-  // ── CORRECTION BUG TOAST : on garde en mémoire si l'URL a déjà été traitée
-  // pour ne pas relancer handleTakeTicket à chaque retour sur la page
+  // Guard anti-toast : on mémorise le serviceId déjà traité pour ne pas
+  // relancer handleTakeTicket à chaque retour sur la page (remontage du composant)
   const handledScanParam = useRef<string | null>(null)
 
   const filteredServices = services.filter(service =>
@@ -148,6 +149,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
     if (!isAdmin && isRealPatient) {
       try {
+        // Vérification doublon patient connecté
         const { data: existingActiveTickets, error: checkError } = await supabase
           .from("ticket")
           .select("id")
@@ -162,18 +164,27 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           toast.error("Demande refusée", { description: "Un ticket actif existe déjà sur le serveur." })
           return
         }
-        const today = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
-const { count: totalTicketsInService, error: countError } = await supabase
-  .from("ticket")
-  .select("id", { count: 'exact', head: true })
-  .eq("id_service", service.id)
-  .gte("created_at", today);;
 
-if (countError) throw countError;
+        // CORRIGÉ : on compte tous les tickets historiques de ce service en BDD
+        // (pas seulement ceux en attente) pour un numéro séquentiel fiable qui ne
+        // réutilise jamais un code déjà attribué, même pour des tickets terminés.
+        const { count: totalHistorique, error: countError } = await supabase
+          .from("ticket")
+          .select("id", { count: "exact", head: true })
+          .eq("id_service", service.id)
+
+        if (countError) throw countError
+
+        const servicePrefix = service.name
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .substring(0, 1)
+          .toUpperCase()
+
+        // CORRIGÉ : position = rang dans la file active (waiting uniquement)
+        // distinct du numéro de ticket qui est historique (jamais réutilisé)
         const currentPosition = calculateQueue(service.id, tickets) + 1
-        const servicePrefix = service.name.substring(0, 1).toUpperCase()
-        const nextNumber = (totalTicketsInService || 0) + 1;
-const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`;
+        const ticketNumber = generateTicketCode(servicePrefix, totalHistorique || 0)
 
         const { data, error } = await supabase
           .from("ticket")
@@ -183,7 +194,7 @@ const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`
             id_guichet: targetCounter.id,
             id_patient_connecte: user.id,
             statut: "waiting",
-            patient_nom: `${user.firstName || ''} ${user.name || ''}`.trim(),
+            patient_nom: `${user.firstName || ""} ${user.name || ""}`.trim(),
             telephone_patient: user.phone || null,
             position: currentPosition,
           }])
@@ -194,7 +205,12 @@ const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`
 
         await fetchTickets()
         setLocalTakenServices(prev => [...prev, service.id])
-        setNewTicket({ code: data.code, service: service.name, counterName: targetCounter.name, position: currentPosition })
+        setNewTicket({
+          code: data.code,
+          service: service.name,
+          counterName: targetCounter.name,
+          position: currentPosition,
+        })
         setShowSuccessModal(true)
         toast.success("Ticket créé avec succès !")
 
@@ -207,87 +223,101 @@ const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`
     }
   }, [services, counters, agents, tickets, user, isAdmin, isRealPatient, localTakenServices, fetchTickets])
 
-const handleSubmitForm = async () => {
-  if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
+  const handleSubmitForm = async () => {
+    if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
 
-  const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
+    const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
 
-  try {
-    // 1. Calculer le total du jour pour ce service
-    const today = new Date().toISOString().split('T')[0];
-    const { count: totalToday, error: countError } = await supabase
-      .from("ticket")
-      .select("id", { count: 'exact', head: true })
-      .eq("id_service", selectedService.id)
-      .gte("created_at", today);
+    try {
+      // CORRIGÉ : vérification doublon par nom (absente avant) — cohérente avec LandingView
+      const { data: existingByName, error: e1 } = await supabase
+        .from("ticket")
+        .select("id")
+        .ilike("patient_nom", fullFormName)
+        .eq("id_service", selectedService.id)
+        .in("statut", ["En attente", "Appelé", "En cours", "waiting", "called", "serving"])
 
-    if (countError) throw countError;
+      if (e1) throw e1
+      if (existingByName && existingByName.length > 0 && !isAdmin) {
+        toast.error("Nom déjà enregistré", {
+          description: `Un ticket actif existe déjà au nom de ${fullFormName} pour ce service.`,
+        })
+        return
+      }
 
-    // 2. Générer le code séquentiel
-    const servicePrefix = selectedService.name.substring(0, 1).toUpperCase();
-    const nextNumber = (totalToday || 0) + 1;
-    const ticketNumber = `${servicePrefix}${nextNumber.toString().padStart(3, '0')}`;
+      // Comptage historique en BDD pour numéro séquentiel cohérent avec handleTakeTicket
+      const { count: totalHistorique, error: countError } = await supabase
+        .from("ticket")
+        .select("id", { count: "exact", head: true })
+        .eq("id_service", selectedService.id)
 
-    // 3. Insertion
-    const { data, error } = await supabase
-      .from("ticket")
-      .insert([{
-        code: ticketNumber,
-        id_service: selectedService.id,
-        id_guichet: selectedCounter.id,
-        id_patient_connecte: null,
-        statut: "waiting",
-        patient_nom: fullFormName,
-        position: (totalToday || 0) + 1 // Position logique
-      }])
-      .select()
-      .single()
+      if (countError) throw countError
 
-    if (error) throw error;
-    
-    // ... reste de ta logique (fetchTickets, setSuccessModal, etc)
-    await fetchTickets();
-    if (!isAdmin) setLocalTakenServices(prev => [...prev, selectedService.id]);
-    setNewTicket({ code: data.code, service: selectedService.name, counterName: selectedCounter.name, position: (totalToday || 0) + 1 });
-    setShowTicketModal(false);
-    setShowSuccessModal(true);
-    setFormData({ nom: "", prenom: "" });
-    toast.success("Ticket créé !");
+      const servicePrefix = selectedService.name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .substring(0, 1)
+        .toUpperCase()
 
-  } catch (err) {
-    console.error(err);
-    toast.error("Erreur", { description: "Échec de la validation du ticket." });
+      // CORRIGÉ : position = file active (waiting) distincte du numéro historique
+      const currentPosition = calculateQueue(selectedService.id, tickets) + 1
+      const ticketNumber = generateTicketCode(servicePrefix, totalHistorique || 0)
+
+      const { data, error } = await supabase
+        .from("ticket")
+        .insert([{
+          code: ticketNumber,
+          id_service: selectedService.id,
+          id_guichet: selectedCounter.id,
+          id_patient_connecte: null,
+          statut: "waiting",
+          patient_nom: fullFormName,
+          position: currentPosition,
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      await fetchTickets()
+      if (!isAdmin) setLocalTakenServices(prev => [...prev, selectedService.id])
+      setNewTicket({
+        code: data.code,
+        service: selectedService.name,
+        counterName: selectedCounter.name,
+        position: currentPosition,
+      })
+      setShowTicketModal(false)
+      setShowSuccessModal(true)
+      setFormData({ nom: "", prenom: "" })
+      toast.success("Ticket créé !")
+
+    } catch (err) {
+      console.error(err)
+      toast.error("Erreur", { description: "Échec de la validation du ticket." })
+    }
   }
-}
-
 
   useEffect(() => {
-    const serviceId = searchParams.get("scan") || searchParams.get("service");
+    const serviceId = searchParams.get("scan") || searchParams.get("service")
+    if (!serviceId || services.length === 0) return
+    if (handledScanParam.current === serviceId) return
 
-    if (!serviceId) return;
-    if (services.length === 0) return;
+    const targetService = services.find(s => s.id === serviceId)
+    if (!targetService) return
 
-    if (handledScanParam.current === serviceId) return;
+    handledScanParam.current = serviceId
+    router.replace(window.location.pathname)
 
-    const targetService = services.find((s) => s.id === serviceId);
-    if (!targetService) return;
-
-    handledScanParam.current = serviceId;
-
-    router.replace(window.location.pathname);
-
-    const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents);
-    
+    const { isEffectivelyActive, closingReason } = getServiceAvailability(targetService, counters, agents)
     if (isEffectivelyActive) {
-      handleTakeTicket(targetService);
+      handleTakeTicket(targetService)
     } else {
-      toast.error("Service indisponible", { description: closingReason });
+      toast.error("Service indisponible", { description: closingReason })
     }
-    
-    return () => {
-        handledScanParam.current = null;
-    };
-  }, [searchParams, services, counters, agents, handleTakeTicket, router]);
+
+    return () => { handledScanParam.current = null }
+  }, [searchParams, services, counters, agents, handleTakeTicket, router])
 
   useEffect(() => {
     if (showScannerModal && services.length > 0) {
@@ -309,7 +339,6 @@ const handleSubmitForm = async () => {
             }
 
             const { isEffectivelyActive, closingReason } = getServiceAvailability(matchedService, counters, agents)
-
             if (!isEffectivelyActive) {
               setScannerError(`Le service ${matchedService.name} est indisponible : ${closingReason}.`)
               return
@@ -344,7 +373,6 @@ const handleSubmitForm = async () => {
       }, 300)
 
       return () => clearTimeout(timer)
-
     } else if (showScannerModal && services.length === 0) {
       setScannerError("Chargement des services en cours, veuillez patienter...")
     }
@@ -403,7 +431,6 @@ const handleSubmitForm = async () => {
                 const { isEffectivelyActive, closingReason } = getServiceAvailability(service, counters, agents)
                 const waitingCount = calculateQueue(service.id, tickets)
                 const estimatedWait = waitingCount > 0 ? waitingCount * 8 : 5
-
                 const hasTicketLocal =
                   !isAdmin &&
                   isRealPatient &&
@@ -414,7 +441,6 @@ const handleSubmitForm = async () => {
                         t.service?.id === service.id &&
                         (t.statut === "waiting" || t.statut === "called" || t.statut === "serving")
                     ))
-
                 return { service, isEffectivelyActive, closingReason, waitingCount, estimatedWait, hasTicketLocal }
               })
               .sort((a, b) => (a.isEffectivelyActive === b.isEffectivelyActive ? 0 : a.isEffectivelyActive ? -1 : 1))
@@ -484,20 +510,20 @@ const handleSubmitForm = async () => {
 
                           <div className="mt-4">
                             <Button
-                              disabled={!isEffectivelyActive || hasTicketLocal}
+                              disabled={!isEffectivelyActive || !!hasTicketLocal}
                               className={`w-full pointer-events-none ${
                                 hasTicketLocal
                                   ? "bg-amber-500 text-white"
                                   : isEffectivelyActive
-                                  ? "bg-emerald text-primary-foreground group-hover:bg-emerald/90"
-                                  : "bg-muted text-muted-foreground"
+                                    ? "bg-emerald text-primary-foreground group-hover:bg-emerald/90"
+                                    : "bg-muted text-muted-foreground"
                               }`}
                             >
                               {hasTicketLocal
                                 ? "Ticket en cours"
                                 : isEffectivelyActive
-                                ? "Prendre un ticket"
-                                : closingReason}
+                                  ? "Prendre un ticket"
+                                  : closingReason}
                             </Button>
                           </div>
                         </div>
