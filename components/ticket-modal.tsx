@@ -33,13 +33,11 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 
   const progress = isCalled ? 100 : Math.max(15, Math.min(95, 100 - (ticket.queuePos * 10)))
 
-  // ── ÉTAT "C'EST VOTRE TOUR" : design complètement différent, impossible à manquer ──
   if (isCalled) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
         <div className="relative w-full max-w-2xl rounded-[28px] shadow-2xl overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200 bg-gradient-to-br from-rose-600 via-rose-500 to-orange-500">
 
-          {/* Pulse de fond animé */}
           <div className="absolute inset-0 opacity-30">
             <div className="absolute top-0 left-1/4 w-64 h-64 bg-white rounded-full blur-3xl animate-pulse" />
             <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-yellow-300 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "0.5s" }} />
@@ -54,7 +52,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 
           <div className="relative z-10 p-8 sm:p-10 text-center">
 
-            {/* Cloche animée géante */}
             <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-full bg-white/20 animate-bounce">
               <Bell className="size-10 text-white" fill="white" />
             </div>
@@ -66,13 +63,11 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
               C'EST VOTRE TOUR !
             </h1>
 
-            {/* Numéro de ticket, plus discret ici */}
             <div className="inline-flex items-center gap-2 bg-white/15 rounded-full px-5 py-2 mb-8">
               <span className="text-xs font-bold text-white/80 uppercase">Ticket</span>
               <span className="text-xl font-black text-white">{ticket.number}</span>
             </div>
 
-            {/* LE GUICHET : élément central, géant */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl mb-6">
               <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-2 flex items-center justify-center gap-1.5">
                 <MapPin className="size-3.5" /> Dirigez-vous immédiatement vers
@@ -102,14 +97,11 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
     )
   }
 
-  // ── ÉTAT NORMAL : en attente, design d'origine ──
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
 
-      {/* CARD PRINCIPALE */}
       <div className="relative w-full max-w-4xl bg-slate-50 dark:bg-slate-900 rounded-[24px] shadow-2xl border border-border overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200">
 
-        {/* EN-TÊTE MODAL */}
         <div className="flex items-center justify-between px-6 py-5 bg-card border-b border-border/60">
           <div className="flex items-center gap-3">
             <div>
@@ -122,13 +114,10 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
           </button>
         </div>
 
-        {/* CONTENU EN DEUX COLONNES */}
         <div className="p-6 lg:p-8 grid grid-cols-1 md:grid-cols-12 gap-6 max-h-[calc(100vh-140px)] overflow-y-auto">
 
-          {/* COLONNE GAUCHE (7/12) : SERVICE, NUMÉRO & PROGRESSION */}
           <div className="md:col-span-7 space-y-6">
 
-            {/* EN-TÊTE DU PASSAGE (Service & Guichet) */}
             <div className="bg-emerald-500 text-white p-6 rounded-2xl shadow-sm flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-xs font-bold uppercase tracking-wider text-emerald-100">Service</span>
@@ -143,7 +132,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
               </div>
             </div>
 
-            {/* BLOCK CENTRAL : LE NUMÉRO */}
             <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 shadow-sm relative">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
                 Votre Numéro de Passage
@@ -156,7 +144,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
                 Ticket Actif & Validé
               </div>
 
-              {/* JAUGE DE PROGRESSION */}
               <div className="space-y-2 pt-4 border-t border-border text-left">
                 <div className="flex justify-between text-xs font-bold text-muted-foreground">
                   <span>Avancement de la file</span>
@@ -169,10 +156,8 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
             </div>
           </div>
 
-          {/* COLONNE DROITE (5/12) : RANG, SMS & ANNULATION */}
           <div className="md:col-span-5 flex flex-col justify-between space-y-4">
 
-            {/* COMPTEUR DE RANG */}
             <div className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-sm">
               <div className="flex items-center gap-4">
                 <div className="size-16 rounded-2xl border-2 border-emerald-500 flex flex-col items-center justify-center shrink-0 bg-emerald-500/5">
@@ -190,7 +175,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
                 </div>
               </div>
 
-              {/* CONSIGNE DIRECTE */}
               <div className="p-3 bg-amber-500/5 border border-amber-500/20 text-foreground rounded-xl text-xs font-medium flex gap-2.5 items-start">
                 <AlertCircle className="size-4 text-amber-500 shrink-0 mt-0.5" />
                 <p>
@@ -199,7 +183,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
               </div>
             </div>
 
-            {/* NOTIFICATION SMS */}
             <div className="space-y-3">
               <div className="flex items-center gap-3 bg-card border border-border rounded-xl p-3.5 shadow-sm">
                 <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl shrink-0">
@@ -214,7 +197,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
               </div>
             </div>
 
-            {/* BOUTON D'ANNULATION NET ET PRÉCIS */}
             <div className="pt-2">
               <button
                 onClick={() => {

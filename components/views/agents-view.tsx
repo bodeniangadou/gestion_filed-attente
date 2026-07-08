@@ -58,7 +58,6 @@ export function AgentsView() {
     })
   }, [agents, searchQuery, filterStatus])
 
-  // ── CRÉATION via route API (ne touche pas à la session admin) ────────────────
   const handleCreate = async () => {
   setIsBusy(true)
 
@@ -81,7 +80,6 @@ export function AgentsView() {
     return
   }
 
-  // Vérification doublon — seul appel réseau avant envoi
   const { data: existingUsers, error: fetchError } = await supabase
     .from("utilisateur")
     .select("email, telephone")
@@ -96,12 +94,10 @@ export function AgentsView() {
     return
   }
 
-  // Fermeture immédiate du modal + reset — l'utilisateur n'attend plus
   setShowCreateModal(false)
   resetForm()
   setIsBusy(false)
 
-  // Toast "en cours" pendant l'appel API
   const toastId = toast.loading("Création du compte en cours...")
 
   const res = await fetch("/api/create-agent", {
@@ -123,8 +119,7 @@ export function AgentsView() {
     return
   }
 
-  // Ajout optimiste immédiat dans le state local — la liste se met à jour
-  // sans attendre le prochain fetch Realtime
+  
   setAgents(prev => [...prev, {
     id: result.id,
     name: newAgent.name,
@@ -141,11 +136,9 @@ export function AgentsView() {
   toast.dismiss(toastId)
   toast.success("Agent créé avec succès !")
 
-  // Resync silencieuse en arrière-plan pour récupérer les vrais champs BDD
   fetchAgents()
 }
 
-  // ── ASSIGNATION ──────────────────────────────────────────────────────────────
   const handleAssign = async () => {
     if (!selectedAgent || !newAgent.counterId) {
       toast.error("Veuillez sélectionner un agent et un guichet.")
@@ -168,7 +161,6 @@ export function AgentsView() {
     }
   }
 
-  // ── TOGGLE STATUT ────────────────────────────────────────────────────────────
   const toggleAgentStatus = async (agentId: string) => {
     const agent = agents.find(a => a.id === agentId)
     if (!agent) return
@@ -180,7 +172,6 @@ export function AgentsView() {
     await fetchAgents()
   }
 
-  // ── BAN ──────────────────────────────────────────────────────────────────────
   const toggleBan = async (agent: Agent) => {
     const nouvelEtat = !agent.est_banni
     const { error } = await supabase
@@ -195,7 +186,6 @@ export function AgentsView() {
     await fetchAgents()
   }
 
-  // ── SUPPRESSION ──────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!agentToDelete) return
     setIsBusy(true)
@@ -218,7 +208,6 @@ export function AgentsView() {
     }
   }
 
-  // ── HELPERS ──────────────────────────────────────────────────────────────────
   const openAssignModal = (agent: Agent) => {
     const assignedCounter = counters.find(c => c.id_agent_actuel === agent.id)
     setSelectedAgent(agent)
@@ -244,11 +233,9 @@ export function AgentsView() {
 
   useEffect(() => { console.log("Agents:", agents) }, [agents])
 
-  // ── RENDER ───────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-background pb-24">
 
-      {/* Header */}
       <div className="border-b border-border bg-card px-8 py-5 shadow-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div>
@@ -263,7 +250,6 @@ export function AgentsView() {
 
       <div className="mx-auto max-w-6xl p-8 space-y-6">
 
-        {/* Stats */}
         <div className="grid grid-cols-3 gap-4 max-w-2xl">
           <div className="bg-card p-4 rounded-xl border border-border shadow-sm flex items-center justify-between">
             <div>
@@ -294,7 +280,6 @@ export function AgentsView() {
           </div>
         </div>
 
-        {/* Recherche + filtre statut */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
@@ -318,7 +303,6 @@ export function AgentsView() {
           </Select>
         </div>
 
-        {/* Grille agents — cards plus compactes */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredAgents.map((agent, index) => {
             const { service, counter } = getAssignmentDisplay(agent.id)
@@ -338,7 +322,6 @@ export function AgentsView() {
                 }`}>
                   <CardContent className="p-4 flex flex-col gap-3">
 
-                    {/* Top : avatar + infos + menu */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar className="size-11 ring-2 ring-border shrink-0">
@@ -390,7 +373,6 @@ export function AgentsView() {
                       </DropdownMenu>
                     </div>
 
-                    {/* Assignation */}
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/40 border border-border/40">
                       {service && counter ? (
                         <>
@@ -407,7 +389,6 @@ export function AgentsView() {
                       )}
                     </div>
 
-                    {/* Footer statut */}
                     <div className="flex justify-end pt-1 border-t border-border/40">
                       {agent.est_banni ? (
                         <span className="text-[11px] font-semibold text-destructive bg-destructive/10 border border-destructive/20 px-2 py-0.5 rounded-md">
@@ -443,7 +424,6 @@ export function AgentsView() {
         )}
       </div>
 
-      {/* Modal Création */}
       <Dialog open={showCreateModal} onOpenChange={open => { setShowCreateModal(open); if (!open) resetForm() }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -487,7 +467,6 @@ export function AgentsView() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Assignation */}
       <Dialog open={showAssignModal} onOpenChange={open => { setShowAssignModal(open); if (!open) resetForm() }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -535,7 +514,6 @@ export function AgentsView() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Suppression */}
       <Dialog open={showDeleteModal} onOpenChange={open => { if (!open) { setShowDeleteModal(false); setAgentToDelete(null) } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

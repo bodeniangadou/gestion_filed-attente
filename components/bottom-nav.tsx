@@ -26,7 +26,6 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
   const router = useRouter()
 
   const getNavItems = () => {
-    // --- Patient ---
     if (!user || user.role === "patient") {
       return [
         { icon: Home, label: "Accueil", href: "/patient" },
@@ -36,7 +35,6 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
       ];
     }
 
-    // --- Agent ---
     if (user.role === "agent") {
       return [
         { icon: LayoutDashboard, label: "Tableau", href: "/agent" },
@@ -46,14 +44,12 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
       ];
     }
 
-    // --- Admin ---
     return [
       { icon: LayoutDashboard, label: "Dashboard", href: "/admin" },
       { icon: Ticket, label: "Tickets", href: "/admin/ticket" },
       { icon: Users, label: "Agents", href: "/admin/agents" },
       { icon: Stethoscope, label: "Services", href: "/admin/services" },
       { icon: Monitor, label: "Guichets", href: "/admin/counters" },
-      { icon: Settings, label: "Réglages", href: "/admin/settings" },
       { icon: User, label: "Profil", href: "/admin/profile" },
     ];
   };
@@ -61,8 +57,7 @@ export function BottomNav({ onTakeTicket }: BottomNavProps) {
   const navItems = getNavItems()
   if (!navItems || navItems.length === 0) return null;
 
-  // La déconnexion n'a de sens que si quelqu'un est réellement connecté
-  // (patient, agent ou admin) — pas pour un simple visiteur anonyme.
+ 
   const handleLogout = () => {
     logout()
     router.push("/")

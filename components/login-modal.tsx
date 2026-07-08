@@ -42,7 +42,6 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   const [mode, setMode] = useState<AuthMode>("login")
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter() 
-  // Form states
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [firstName, setFirstName] = useState("")
@@ -101,9 +100,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
 
     const role = profile.role || "patient"
 
-    // ── Vérifications spécifiques aux agents ──
     if (role === "agent") {
-      // 1. Vérifier si l'agent est banni
       if (profile.est_banni === true) {
         toast.error("Compte suspendu", {
           description: "Votre compte agent a été banni. Contactez l'administrateur."
@@ -113,7 +110,6 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
         return
       }
 
-      // 2. Vérifier qu'un guichet lui est bien assigné
       const { data: assignedCounter, error: counterError } = await supabase
         .from("guichet")
         .select("id, id_service")
@@ -138,7 +134,6 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
         return
       }
 
-      // 3. Vérifier que ce guichet est bien rattaché à un service
       if (!assignedCounter.id_service) {
         toast.error("Aucun service assigné", {
           description: "Votre guichet n'est associé à aucun service. Contactez l'administrateur."
@@ -149,9 +144,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       }
     }
 
-    // Pas de setUser ici : loadUserProfile() (déclenché par onAuthStateChange
-    // dans app-context.tsx) va peupler `user` automatiquement avec les bonnes
-    // données (firstName/name déjà splittés, photo, téléphone, etc.)
+    
     setIsLoading(false)
     handleClose()
     onSuccess()
@@ -184,7 +177,6 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
     return
   }
 
-  // 3. Inscription Auth (Supabase gère l'unicité de l'email ici)
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -415,7 +407,7 @@ setIsLoading(false)
                     <Input
                       id="phone"
                       type="tel"
-                      placeholder="+223 XX XX XX XX"
+                      placeholder="76 32 10 20"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       className="pl-10 h-11 rounded-xl"

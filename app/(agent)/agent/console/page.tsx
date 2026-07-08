@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useApp, Ticket } from "@/lib/app-context";
+import { useApp, Ticket, Counter } from "@/lib/app-context";
+import { Button } from "@/components/ui/button" 
+import { toast } from "sonner";
 import {
   Phone,
   PhoneOff,
@@ -16,10 +18,24 @@ import {
   VolumeX,
   Timer,
   Play,
+  AlertTriangle,
+  Loader2,
+  Info,
 } from "lucide-react";
-
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog" 
 export default function Page() {
-  const { tickets, getAgentCounter, getAgentQueue, callNextPatient, recallPatient, markAbsent, completeService, startConsultation, toggleCounter } = useApp();
+  const {
+    tickets, getAgentCounter, getAgentQueue, callNextPatient, recallPatient,
+    markAbsent, completeService, startConsultation, toggleCounter,
+    requestCloseCounter, redirectPendingTicketsAndClose,
+    cancelPendingTicketsAndClose, keepPendingTicketsAndClose,
+  } = useApp();
 
   const counter = getAgentCounter();
   const fileAttente = getAgentQueue();
@@ -34,6 +50,12 @@ export default function Page() {
   const [dureeConsultationReelle, setDureeConsultationReelle] = useState<number>(0);
   const [annonceKey, setAnnonceKey] = useState(0);
 
+  const [showCloseDialog, setShowCloseDialog] = useState(false);
+  const [pendingTickets, setPendingTickets] = useState<Ticket[]>([]);
+  const [availableCounter, setAvailableCounter] = useState<Counter | null>(null);
+  const [isCheckingCounters, setIsCheckingCounters] = useState(false);
+  const [isProcessingClose, setIsProcessingClose] = useState(false);
+
   const syntheseVocale = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
@@ -42,11 +64,6 @@ export default function Page() {
     utterance.rate = 0.9;
     syntheseVocale.current = utterance;
   }, []);
-
-  // Synchronisation temps réel : le patient actuel est dérivé directement de la liste
-  // des tickets du context (mise à jour par le canal Realtime), au lieu d'un state
-  // local figé. Couvre les cas : rechargement de page, action faite depuis un autre
-  // onglet/appareil, ou changement de statut déclenché ailleurs (admin, etc.)
   useEffect(() => {
     if (!counter) {
       setPatientActuel(null);
@@ -68,8 +85,7 @@ export default function Page() {
 
     setPatientActuel(ticketActif);
 
-    // Si le ticket est déjà "serving" (ex: après un refresh) et qu'on n'avait pas
-    // encore de chrono local démarré, on relance le chrono à partir de calledAt
+ 
     if (ticketActif.statut === "serving") {
       setConsultationActive(true);
       if (!debutConsultation && ticketActif.calledAt) {
@@ -183,13 +199,52 @@ export default function Page() {
   };
 
   const handleToggleGuichet = async () => {
-    if (!counter || actionLoading) return;
-    setActionLoading(true);
-    try {
-      await toggleCounter(!counter.isActive);
-    } finally {
-      setActionLoading(false);
+    if (!counter || actionLoading || isCheckingCounters) return;
+
+    if (!counter.isActive) {
+      setActionLoading(true);
+      try {
+        await toggleCounter(true);
+      } finally {
+        setActionLoading(false);
+      }
+      return;
     }
+
+    setIsCheckingCounters(true);
+    const result = await requestCloseCounter();
+    setIsCheckingCounters(false);
+
+    if (result.needsConfirmation) {
+      setPendingTickets(result.pendingTickets);
+      setAvailableCounter(result.availableCounter);
+      setShowCloseDialog(true);
+    }
+  };
+
+  const handleRedirectAndClose = async () => {
+    if (!availableCounter) return;
+    setIsProcessingClose(true);
+    const ok = await redirectPendingTicketsAndClose(pendingTickets.map((t) => t.id), availableCounter.id);
+    setIsProcessingClose(false);
+    if (ok) setShowCloseDialog(false);
+  };
+
+  const handleCancelTicketsAndClose = async () => {
+    setIsProcessingClose(true);
+    const ok = await cancelPendingTicketsAndClose(pendingTickets.map((t) => t.id));
+    setIsProcessingClose(false);
+    if (ok) setShowCloseDialog(false);
+  };
+
+  const handleKeepWaitingAndClose = async () => {
+    setShowCloseDialog(false);
+    await keepPendingTicketsAndClose();
+  };
+
+  const handleStayOpen = () => {
+    setShowCloseDialog(false);
+    toast.info("Fermeture annulée.", { id: "counter-status" });
   };
 
   const formaterDuree = (sec: number) => {
@@ -445,14 +500,16 @@ export default function Page() {
 
         <button
           onClick={handleToggleGuichet}
-          disabled={actionLoading}
+          disabled={actionLoading || isCheckingCounters}
           className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-3 transition-all ${
             counter.isActive
               ? "bg-white border-2 border-rose-200 text-rose-600 hover:bg-rose-50"
               : "bg-emerald-600 text-white hover:bg-emerald-700"
-          }`}
+          } disabled:opacity-60`}
         >
-          {counter.isActive ? (
+          {isCheckingCounters ? (
+            <Loader2 size={20} className="animate-spin" />
+          ) : counter.isActive ? (
             <>
               <PhoneOff size={20} /> Fermer le guichet
             </>
@@ -463,6 +520,76 @@ export default function Page() {
           )}
         </button>
       </div>
+
+     
+     <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
+  <DialogContent className="sm:max-w-md rounded-3xl p-0 overflow-hidden gap-0">
+    <div className="px-6 pt-7 pb-4 text-center border-b border-slate-100">
+      <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-amber-100">
+        <AlertTriangle className="size-6 text-amber-500" />
+      </div>
+      <DialogTitle className="text-lg font-bold text-slate-800">
+        {pendingTickets.length} ticket{pendingTickets.length > 1 ? "s" : ""} en attente
+      </DialogTitle>
+      <DialogDescription className="text-sm text-slate-500 mt-1">
+        Que souhaitez-vous faire avant de fermer votre guichet ?
+      </DialogDescription>
+    </div>
+
+    <div className="p-5 space-y-2.5">
+      <Button
+        onClick={handleRedirectAndClose}
+        disabled={isProcessingClose || !availableCounter}
+        className={`w-full flex items-center gap-3 rounded-xl px-4 py-3 h-auto justify-start transition ${
+          availableCounter
+            ? "bg-emerald-500 text-white hover:bg-emerald-600"
+            : "bg-slate-100 text-slate-400 cursor-not-allowed"
+        }`}
+      >
+        {isProcessingClose ? <Loader2 className="size-4 animate-spin shrink-0" /> : <ChevronRight className="size-4 shrink-0" />}
+        <div className="text-left">
+          <p className="text-sm font-semibold">{availableCounter ? `Rediriger vers guichet ${availableCounter.number}` : "Aucun guichet disponible"}</p>
+          <p className="text-xs opacity-80 font-normal">Les patients gardent leur place</p>
+        </div>
+      </Button>
+
+      <Button
+        onClick={handleKeepWaitingAndClose}
+        disabled={isProcessingClose}
+        variant="outline"
+        className="w-full flex items-center gap-3 rounded-xl border-2 border-slate-200 px-4 py-3 h-auto justify-start"
+      >
+        <Info className="size-4 shrink-0 text-slate-500" />
+        <div className="text-left">
+          <p className="text-sm font-semibold text-slate-800">Conserver les tickets</p>
+          <p className="text-xs text-slate-500 font-normal">Un autre agent prendra le relais</p>
+        </div>
+      </Button>
+
+      <Button
+        onClick={handleCancelTicketsAndClose}
+        disabled={isProcessingClose}
+        variant="outline"
+        className="w-full flex items-center gap-3 rounded-xl border-2 border-rose-200 px-4 py-3 h-auto justify-start text-rose-600 hover:bg-rose-50"
+      >
+        {isProcessingClose ? <Loader2 className="size-4 animate-spin shrink-0" /> : <UserX className="size-4 shrink-0" />}
+        <div className="text-left">
+          <p className="text-sm font-semibold">Annuler les tickets</p>
+          <p className="text-xs opacity-80 font-normal">Les patients devront se réinscrire</p>
+        </div>
+      </Button>
+
+      <Button
+        onClick={handleStayOpen}
+        disabled={isProcessingClose}
+        variant="ghost"
+        className="w-full text-center rounded-xl px-4 py-2.5 text-sm font-medium text-slate-400 hover:text-slate-600"
+      >
+        Rester ouvert et gérer les tickets
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
 
       <style jsx>{`
         .custom-scroll::-webkit-scrollbar {

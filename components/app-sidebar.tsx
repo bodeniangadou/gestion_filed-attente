@@ -30,25 +30,20 @@ interface NavItem {
 }
 
 const navItems = [
-  // --- Admin ---
-  { icon: <LayoutDashboard />, label: "Dashboard", href: "/admin", roles: ["admin"] },
+  { icon: <LayoutDashboard />, label: "Tableau de bord", href: "/admin", roles: ["admin"] },
   { icon: <Ticket />, label: "Tickets", href: "/admin/ticket", roles: ["admin"] },
   { icon: <Users />, label: "Agents", href: "/admin/agents", roles: ["admin"] },
   { icon: <Stethoscope />, label: "Services", href: "/admin/services", roles: ["admin"] },
   { icon: <Monitor />, label: "Guichets", href: "/admin/counters", roles: ["admin"] },
   { icon: <User />, label: "Profil", href: "/admin/profile", roles: ["admin"] },
 
-  // --- Agent ---
   { icon: <LayoutDashboard />, label: "Tableau de bord", href: "/agent", roles: ["agent"] },
   { icon: <Monitor />, label: "Console", href: "/agent/console", roles: ["agent"] },
   { icon: <ListOrdered />, label: "Ma File", href: "/agent/file", roles: ["agent"] },
   { icon: <User />, label: "Profil", href: "/agent/profil", roles: ["agent"] },
 
-  // --- Patient ---
-
-  
   { icon: <LayoutDashboard />, label: "Tableau de bord ", href: "/patient", roles: ["patient"] },
-    {icon: <Stethoscope />, label: "Services", href: "/patient/services", roles: ["patient"] },
+  {icon: <Stethoscope />, label: "Services", href: "/patient/services", roles: ["patient"] },
   { icon: <ListOrdered />, label: "Mes Tickets", href: "/patient/tickets", roles: ["patient"] },
   { icon: <User />, label: "Profil", href: "/patient/profile", roles: ["patient"] },
 ];
@@ -69,7 +64,6 @@ export function AppSidebar() {
       animate={{ x: 0 }}
       className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border bg-card lg:flex"
     >
-      {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-border px-6">
         <div className="flex size-10 items-center justify-center rounded-xl bg-emerald text-primary-foreground">
           <Building2 className="size-5" />
@@ -109,7 +103,6 @@ export function AppSidebar() {
 
       <Separator />
 
-      {/* User section */}
       <div className="p-4">
         {user && (
           <div className="space-y-3">
