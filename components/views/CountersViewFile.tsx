@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useApp } from "@/lib/app-context"
 
 export function CountersView() {
-  const { counters, services, setCounters, agents, fetchServices, fetchCounters } = useApp()
+  const { counters, services, setCounters, agents, fetchServices, fetchCounters, deleteCounter } = useApp()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCounter, setNewCounter] = useState({ name: "", serviceId: "", agentId: "" })
   const [showEditModal, setShowEditModal] = useState(false)
@@ -244,9 +244,16 @@ export function CountersView() {
                           <DropdownMenuItem onClick={() => { setEditingCounter(counter); setShowEditModal(true) }}>
                             <Edit2 className="mr-2 size-4" /> Modifier
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 size-4" /> Supprimer
-                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+  className="text-destructive"
+  onClick={() => {
+    if (confirm("Supprimer ce guichet ?")) {
+      deleteCounter(counter.id);
+    }
+  }}
+>
+  <Trash2 className="mr-2 size-4" /> Supprimer
+</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

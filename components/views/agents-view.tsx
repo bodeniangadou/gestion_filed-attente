@@ -362,11 +362,11 @@ export function AgentsView() {
                             <Plus className={`mr-2 size-4 ${agent.isOnline ? "rotate-45" : ""}`} />
                             {agent.isOnline ? "Désactiver l'accès" : "Réactiver l'accès"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive font-semibold" onClick={() => toggleBan(agent)}>
+                          <DropdownMenuItem className="text-destructive " onClick={() => toggleBan(agent)}>
                             <ShieldAlert className="mr-2 size-4" />
                             {agent.est_banni ? "Révoquer le bannissement" : "Bannir définitivement"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive font-semibold" onClick={() => { setAgentToDelete(agent); setShowDeleteModal(true) }}>
+                          <DropdownMenuItem className="text-destructive " onClick={() => { setAgentToDelete(agent); setShowDeleteModal(true) }}>
                             <Trash2 className="mr-2 size-4" /> Supprimer le compte
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -514,6 +514,7 @@ export function AgentsView() {
         </DialogContent>
       </Dialog>
 
+      {/* Modal Suppression */}
       <Dialog open={showDeleteModal} onOpenChange={open => { if (!open) { setShowDeleteModal(false); setAgentToDelete(null) } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

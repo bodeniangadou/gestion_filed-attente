@@ -32,14 +32,54 @@ const formatDateTime = (dateInput: Date | string) => {
 }
 
 const getDuration = (ticket: any) => {
-  if (ticket.statut !== "completed" || !ticket.completedAt) return null
-  const diff = new Date(ticket.completedAt).getTime() - new Date(ticket.createdAt).getTime()
-  const total = Math.round(diff / 60000)
-  if (total < 60) return `${total} min`
-  const h = Math.floor(total / 60), m = total % 60
-  return m > 0 ? `${h}h ${m}min` : `${h}h`
-}
-
+  if (ticket.statut !== "completed" || !ticket.completedAt) return null;
+  
+  // Point de départ : calledAt (date_appel) ou createdAt
+  const start = ticket.calledAt || ticket.createdAt;
+  if (!start) return null;
+  
+  const diffMs = new Date(ticket.completedAt).getTime() - new Date(start).getTime();
+  const totalSeconds = Math.round(diffMs / 1000);
+  
+  // Si moins d'une minute
+  if (totalSeconds < 60) {
+    return `${totalSeconds} seconde${totalSeconds > 1 ? 's' : ''}`;
+  }
+  
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  
+  // Si moins d'une heure
+  if (totalMinutes < 60) {
+    if (remainingSeconds === 0) {
+      return `${totalMinutes} minute${totalMinutes > 1 ? 's' : ''}`;
+    }
+    return `${totalMinutes} min ${remainingSeconds}s`;
+  }
+  
+  // Si plus d'une heure
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  
+  if (hours < 24) {
+    if (minutes === 0) {
+      return `${hours} heure${hours > 1 ? 's' : ''}`;
+    }
+    return `${hours}h ${minutes}min`;
+  }
+  
+  // Si plus de 24 heures
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  
+  if (remainingHours === 0) {
+    return `${days} jour${days > 1 ? 's' : ''}`;
+  }
+  if (minutes === 0) {
+    return `${days}j ${remainingHours}h`;
+  }
+  return `${days}j ${remainingHours}h ${minutes}min`;
+};
 // Palette harmonisée avec le reste de l'app (primary/emerald, ambre pour l'attente,
 // destructive pour les états négatifs, gris neutre pour fermé/annulé) — suppression
 // du bleu et du violet qui n'apparaissent nulle part ailleurs dans tes autres pages.
@@ -92,7 +132,10 @@ export default function FilePage() {
       .sort((a, b) => {
         if (activeTab === "queue") {
           const order: Record<string, number> = { called: 0, serving: 1, waiting: 2 }
-          return (order[a.statut] ?? 3) - (order[b.statut] ?? 3)
+          const statusDiff = (order[a.statut] ?? 3) - (order[b.statut] ?? 3)
+          if (statusDiff !== 0) return statusDiff
+          // À l'intérieur d'un même statut : le plus récent en premier
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         }
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       })

@@ -461,9 +461,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => b.priorite !== a.priorite ? b.priorite - a.priorite : a.createdAt.getTime() - b.createdAt.getTime())
   }, [getAgentCounter, tickets])
 
-  const startConsultation = useCallback(async (ticketId: string) => {
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "serving" as const } : t))
-    const { error } = await supabase.from("ticket").update({ statut: "serving" }).eq("id", ticketId)
+ const startConsultation = useCallback(async (ticketId: string) => {
+    const debut = new Date()
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "serving" as const, calledAt: debut } : t))
+    const { error } = await supabase
+      .from("ticket")
+      .update({ statut: "serving", date_appel: debut.toISOString() })
+      .eq("id", ticketId)
     if (error) { console.error("Erreur consultation BDD:", error) }
     await fetchTickets()
   }, [fetchTickets])
@@ -655,11 +659,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setServices(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }, [])
 
-  const deleteService = useCallback((id: string) => {
-    setServices(prev => prev.filter(s => s.id !== id))
-    setCounters(prev => prev.filter(c => c.serviceId !== id))
-  }, [])
+  const deleteService = useCallback(async (id: string) => { // 1. Ajoute 'async'
+  // 2. Appel à Supabase pour supprimer dans la vraie base de données
+  const { error } = await supabase
+    .from("service")
+    .delete()
+    .eq("id", id);
 
+  if (error) {
+    console.error("Erreur suppression Supabase:", error);
+    return;
+  }
+
+  // 3. Mise à jour de l'état local (ce que tu avais déjà)
+  setServices(prev => prev.filter(s => s.id !== id));
+  setCounters(prev => prev.filter(c => c.serviceId !== id));
+}, []); // 4. Vérifie que 'supabase' est bien accessible ici
   const createCounter = useCallback((counter: Omit<Counter, "id">): Counter => {
     const newCounter = { ...counter, id: `c-${Date.now()}` }
     setCounters(prev => [...prev, newCounter])
@@ -670,10 +685,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCounters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c))
   }, [])
 
-  const deleteCounter = useCallback((id: string) => {
-    setCounters(prev => prev.filter(c => c.id !== id))
-  }, [])
+ const deleteCounter = useCallback(async (id: string) => {
+  // 1. Suppression dans la base de données
+  const { error } = await supabase
+    .from("guichet")
+    .delete()
+    .eq("id", id);
 
+  if (error) {
+    console.error("Erreur de suppression du guichet :", error);
+    toast.error("Impossible de supprimer le guichet.");
+    return;
+  }
+
+  // 2. Mise à jour de l'affichage local
+  setCounters(prev => prev.filter(c => c.id !== id));
+  toast.success("Guichet supprimé avec succès.");
+}, []);
   const createAgent = useCallback((agent: Omit<Agent, "id">): Agent => {
     const newAgent = { ...agent, id: `a-${Date.now()}` }
     setAgents(prev => [...prev, newAgent])
@@ -713,6 +741,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const todayTickets = tickets.filter(t => new Date(t.createdAt) >= today)
     const completedToday = todayTickets.filter(t => t.statut === "completed")
+    // NOTE : depuis que startConsultation() met aussi à jour date_appel,
+    // calledAt représente le début RÉEL de la consultation (clic "Démarrer"),
+    // pas seulement l'heure d'appel au guichet. avgWaitTime mesure donc le
+    // temps total vécu par le patient jusqu'à sa prise en charge effective,
+    // et non plus uniquement le temps jusqu'à l'appel. C'est volontaire :
+    // un seul champ date_appel ne peut pas porter les deux informations
+    // sans ajouter une colonne dédiée en base.
     const totalWaitTime = completedToday.reduce((acc, t) => {
       if (t.calledAt && t.createdAt) return acc + (new Date(t.calledAt).getTime() - new Date(t.createdAt).getTime())
       return acc

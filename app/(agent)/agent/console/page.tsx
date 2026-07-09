@@ -64,6 +64,15 @@ export default function Page() {
     utterance.rate = 0.9;
     syntheseVocale.current = utterance;
   }, []);
+
+  // ── Synchro patient courant depuis les tickets (source de vérité = DB).
+  // Le début de consultation n'est plus un Date.now() local : on le lit
+  // directement depuis ticket.calledAt (colonne date_appel), qui est
+  // désormais mis à jour par startConsultation() au clic "Démarrer".
+  // Avantages :
+  //  - même durée affichée partout (autre écran, autre agent, autre onglet)
+  //  - un rechargement de page ne fait plus repartir le chrono à 0 :
+  //    calledAt est persisté en base, donc récupéré tel quel après reload.
   useEffect(() => {
     if (!counter) {
       setPatientActuel(null);
@@ -85,12 +94,9 @@ export default function Page() {
 
     setPatientActuel(ticketActif);
 
- 
-    if (ticketActif.statut === "serving") {
+    if (ticketActif.statut === "serving" && ticketActif.calledAt) {
       setConsultationActive(true);
-      if (!debutConsultation && ticketActif.calledAt) {
-        setDebutConsultation(new Date(ticketActif.calledAt).getTime());
-      }
+      setDebutConsultation(ticketActif.calledAt.getTime());
     } else {
       setConsultationActive(false);
       setDebutConsultation(null);
@@ -100,6 +106,10 @@ export default function Page() {
   useEffect(() => {
     let intervalle: ReturnType<typeof setInterval> | undefined;
     if (consultationActive && debutConsultation) {
+      // calcul immédiat pour éviter un affichage à 0 pendant 1s après reload
+      setDureeConsultationReelle(
+        Math.floor((Date.now() - debutConsultation) / 1000)
+      );
       intervalle = setInterval(() => {
         setDureeConsultationReelle(
           Math.floor((Date.now() - debutConsultation) / 1000)
@@ -147,11 +157,10 @@ export default function Page() {
     if (!patientActuel || consultationActive || actionLoading) return;
     setActionLoading(true);
     try {
+      // startConsultation met à jour statut="serving" ET date_appel en base ;
+      // le useEffect de synchro (tickets -> patientActuel) reprendra ensuite
+      // debutConsultation depuis ticket.calledAt renvoyé par la DB.
       await startConsultation(patientActuel.id);
-      setPatientActuel({ ...patientActuel, statut: "serving" });
-      setConsultationActive(true);
-      setDebutConsultation(Date.now());
-      setDureeConsultationReelle(0);
     } finally {
       setActionLoading(false);
     }
@@ -370,13 +379,13 @@ export default function Page() {
                 </button>
 
                 <button
-                  onClick={rappeler}
-                  disabled={!patientActuel || actionLoading}
-                  className="flex flex-col items-center gap-2 py-4 rounded-xl bg-amber-500 text-white shadow-md hover:bg-amber-400 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
-                >
-                  <RotateCcw size={20} />
-                  <span className="text-xs">Rappeler</span>
-                </button>
+  onClick={rappeler}
+  disabled={!patientActuel || actionLoading || consultationActive}
+  className="flex flex-col items-center gap-2 py-4 rounded-xl bg-amber-500 text-white shadow-md hover:bg-amber-400 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
+>
+  <RotateCcw size={20} />
+  <span className="text-xs">Rappeler</span>
+</button>
                 <button
                   onClick={marquerAbsent}
                   disabled={!patientActuel || actionLoading}
