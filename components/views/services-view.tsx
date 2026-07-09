@@ -16,13 +16,34 @@ import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
 
 // FORMAT : {Préfixe}{numéro padStart 3}
-// ex: C001, C047, C124, C1000
+// ex: C001, C047, C124
 // Le préfixe = 1ère lettre du nom du service (sans accent, majuscule)
-// Le numéro = total historique de tickets pour CE service en BDD + 1
-// → jamais de doublon sur toute la durée de vie du service
-function generateTicketCode(servicePrefix: string, totalHistorique: number): string {
-  const nextNumber = totalHistorique + 1
-  return `${servicePrefix.toUpperCase()}${String(nextNumber).padStart(3, "0")}`
+// Le numéro = compteur du JOUR pour ce service (tous statuts confondus)
+// CORRIGÉ : repart à 001 chaque jour, aligné sur la logique de LandingView.tsx
+// (avant : comptage historique global, le numéro ne redémarrait jamais)
+function generateTicketCode(servicePrefix: string, todayCount: number): string {
+  return `${servicePrefix.toUpperCase()}${String(todayCount).padStart(3, "0")}`
+}
+
+// NOUVEAU : compte les tickets du jour pour ce service dans Supabase
+// Reset automatique chaque jour — on ne compte que ceux créés aujourd'hui,
+// peu importe leur statut (waiting/called/serving/completed/absent/cancelled)
+async function getTodayTicketCount(serviceId: string): Promise<number> {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const todayISO = today.toISOString()
+
+  const { count, error } = await supabase
+    .from("ticket")
+    .select("id", { count: "exact", head: true })
+    .eq("id_service", serviceId)
+    .gte("created_at", todayISO)
+
+  if (error) {
+    console.error("Erreur comptage tickets du jour:", error)
+    return 0
+  }
+  return count ?? 0
 }
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -165,15 +186,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           return
         }
 
-        // CORRIGÉ : on compte tous les tickets historiques de ce service en BDD
-        // (pas seulement ceux en attente) pour un numéro séquentiel fiable qui ne
-        // réutilise jamais un code déjà attribué, même pour des tickets terminés.
-        const { count: totalHistorique, error: countError } = await supabase
-          .from("ticket")
-          .select("id", { count: "exact", head: true })
-          .eq("id_service", service.id)
-
-        if (countError) throw countError
+        // CORRIGÉ : comptage du jour seulement (aligné sur LandingView.tsx)
+        // → le numéro repart à 001 chaque jour, tous statuts confondus
+        const todayCount = await getTodayTicketCount(service.id)
 
         const servicePrefix = service.name
           .normalize("NFD")
@@ -181,10 +196,10 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           .substring(0, 1)
           .toUpperCase()
 
-        // CORRIGÉ : position = rang dans la file active (waiting uniquement)
-        // distinct du numéro de ticket qui est historique (jamais réutilisé)
+        // position = rang dans la file active (waiting uniquement)
+        // distinct du numéro de ticket qui est basé sur le compteur du jour
         const currentPosition = calculateQueue(service.id, tickets) + 1
-        const ticketNumber = generateTicketCode(servicePrefix, totalHistorique || 0)
+        const ticketNumber = generateTicketCode(servicePrefix, todayCount + 1)
 
         const { data, error } = await supabase
           .from("ticket")
@@ -229,7 +244,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
 
     try {
-      // CORRIGÉ : vérification doublon par nom (absente avant) — cohérente avec LandingView
+      // Vérification doublon par nom — cohérente avec LandingView
       const { data: existingByName, error: e1 } = await supabase
         .from("ticket")
         .select("id")
@@ -245,13 +260,8 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         return
       }
 
-      // Comptage historique en BDD pour numéro séquentiel cohérent avec handleTakeTicket
-      const { count: totalHistorique, error: countError } = await supabase
-        .from("ticket")
-        .select("id", { count: "exact", head: true })
-        .eq("id_service", selectedService.id)
-
-      if (countError) throw countError
+      // CORRIGÉ : comptage du jour seulement (aligné sur LandingView.tsx et handleTakeTicket)
+      const todayCount = await getTodayTicketCount(selectedService.id)
 
       const servicePrefix = selectedService.name
         .normalize("NFD")
@@ -259,9 +269,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         .substring(0, 1)
         .toUpperCase()
 
-      // CORRIGÉ : position = file active (waiting) distincte du numéro historique
+      // position = file active (waiting) distincte du numéro basé sur le jour
       const currentPosition = calculateQueue(selectedService.id, tickets) + 1
-      const ticketNumber = generateTicketCode(servicePrefix, totalHistorique || 0)
+      const ticketNumber = generateTicketCode(servicePrefix, todayCount + 1)
 
       const { data, error } = await supabase
         .from("ticket")

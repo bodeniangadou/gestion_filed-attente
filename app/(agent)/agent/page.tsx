@@ -123,7 +123,7 @@ export default function AgentDashboard() {
 
   const ticketStats = useMemo(() => ({
     waiting:   filteredTickets.filter(t => ["waiting","called","serving"].includes(t.statut)).length,
-    completed: filteredTickets.filter(t => t.statut === "completed" || t.statut === "done").length,
+    completed: filteredTickets.filter(t => t.statut === "completed" ).length,
     cancelled: filteredTickets.filter(t => t.statut === "cancelled").length,
     absent:    filteredTickets.filter(t => t.statut === "absent").length,
   }), [filteredTickets])
