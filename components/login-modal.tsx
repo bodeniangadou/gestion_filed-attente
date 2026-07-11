@@ -152,84 +152,92 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   }
 
   const handleRegister = async (e: React.FormEvent) => {
-  e.preventDefault()
+    e.preventDefault()
 
-  if (!/^\d{8}$/.test(phone)) {
-    toast.warning("Format invalide", {
-      description: "Le numéro doit contenir exactement 8 chiffres."
-    })
-    return
-  }
-
-  setIsLoading(true)
-
-  const { data: existingPhone } = await supabase
-    .from("utilisateur")
-    .select("id")
-    .eq("telephone", phone)
-    .single()
-
-  if (existingPhone) {
-    toast.warning("Numéro déjà enregistré", {
-      description: "Ce numéro de téléphone est déjà associé à un autre compte.",
-    })
-    setIsLoading(false)
-    return
-  }
-
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { nom: `${firstName} ${lastName}` } }
-  })
-
-  if (error) {
-    let errorMessage = error.message
-    if (error.message.includes("already registered")) {
-      errorMessage = "Un compte existe déjà avec cette adresse email."
+    if (!/^\d{8}$/.test(phone)) {
+      toast.warning("Format invalide", {
+        description: "Le numéro doit contenir exactement 8 chiffres."
+      })
+      return
     }
-    
-    toast.error("Erreur d'inscription", {
-      description: errorMessage
-    })
-    setIsLoading(false)
-    return
-  }
 
-  if (data.user) {
-    const { error: dbError } = await supabase.from("utilisateur").insert([{
-      id: data.user.id,
-      nom: `${firstName} ${lastName}`,
-      email: email,
-      role: "patient",
-      telephone: phone,
-      photo_url:null
-    }])
+    setIsLoading(true)
 
-    if (dbError) {
-      toast.error("Erreur profil", {
-        description: "Un problème est survenu lors de la création de votre profil. Veuillez réessayer."
+    const { data: existingPhone } = await supabase
+      .from("utilisateur")
+      .select("id")
+      .eq("telephone", phone)
+      .single()
+
+    if (existingPhone) {
+      toast.warning("Numéro déjà enregistré", {
+        description: "Ce numéro de téléphone est déjà associé à un autre compte.",
       })
       setIsLoading(false)
       return
     }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { nom: `${firstName} ${lastName}` } }
+    })
+
+    if (error) {
+      let errorMessage = error.message
+      if (error.message.includes("already registered")) {
+        errorMessage = "Un compte existe déjà avec cette adresse email."
+      }
+      
+      toast.error("Erreur d'inscription", {
+        description: errorMessage
+      })
+      setIsLoading(false)
+      return
+    }
+
+    if (data.user) {
+      const { error: dbError } = await supabase.from("utilisateur").insert([{
+        id: data.user.id,
+        nom: `${firstName} ${lastName}`,
+        email: email,
+        role: "patient",
+        telephone: phone,
+        photo_url: null
+      }])
+
+      if (dbError) {
+        // Rollback : le compte Auth a été créé mais son profil n'a pas pu
+        // être inséré. On supprime le compte Auth pour éviter un "compte
+        // fantôme" (email bloqué définitivement, utilisateur ne pouvant ni
+        // se connecter ni se réinscrire).
+        try {
+          await fetch("/api/rollback-signup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: data.user.id }),
+          })
+        } catch (rollbackErr) {
+          console.error("Erreur lors du rollback du compte:", rollbackErr)
+        }
+
+        toast.error("Erreur profil", {
+          description: "Un problème est survenu lors de la création de votre profil. Veuillez réessayer."
+        })
+        setIsLoading(false)
+        return
+      }
+    }
+
+    toast.success("Compte créé avec succès !", {
+      description: "Votre compte est actif. Veuillez vous connecter maintenant.",
+      duration: 5000,
+    })
+
+    setMode("login") 
+    setIsLoading(false)
+    handleClose()
   }
-
- 
-toast.success("Compte créé avec succès !", {
-  description: "Votre compte est actif. Veuillez vous connecter maintenant.",
-  duration: 5000,
-})
-
-setMode("login") 
-
-setIsLoading(false)
-  
-  setIsLoading(false)
-  handleClose()
-}
-
-  
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>

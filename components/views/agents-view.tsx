@@ -59,85 +59,98 @@ export function AgentsView() {
   }, [agents, searchQuery, filterStatus])
 
   const handleCreate = async () => {
-  setIsBusy(true)
+    setIsBusy(true)
 
-  if (!newAgent.name || !newAgent.firstName || !newAgent.email || !newAgent.phone || !newAgent.password) {
-    toast.error("Tous les champs sont requis")
+    if (!newAgent.name || !newAgent.firstName || !newAgent.email || !newAgent.phone || !newAgent.password) {
+      toast.error("Tous les champs sont requis")
+      setIsBusy(false)
+      return
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(newAgent.email)) {
+      toast.error("Adresse email invalide.")
+      setIsBusy(false)
+      return
+    }
+
+    if (newAgent.password.length < 8) {
+      toast.error("Le mot de passe doit contenir au moins 8 caractères.")
+      setIsBusy(false)
+      return
+    }
+
+    const { data: existingUsers, error: fetchError } = await supabase
+      .from("utilisateur")
+      .select("email, telephone")
+      .or(`email.eq.${newAgent.email},telephone.eq.${newAgent.phone}`)
+
+    if (fetchError) { toast.error("Erreur lors de la vérification."); setIsBusy(false); return }
+
+    if (existingUsers && existingUsers.length > 0) {
+      if (existingUsers.some(u => u.email === newAgent.email)) toast.error("Cet email existe déjà.")
+      if (existingUsers.some(u => u.telephone === newAgent.phone)) toast.error("Ce numéro de téléphone existe déjà.")
+      setIsBusy(false)
+      return
+    }
+
+    setShowCreateModal(false)
+    resetForm()
     setIsBusy(false)
-    return
-  }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(newAgent.email)) {
-    toast.error("Adresse email invalide.")
-    setIsBusy(false)
-    return
-  }
+    const toastId = toast.loading("Création du compte en cours...")
 
-  if (newAgent.password.length < 8) {
-    toast.error("Le mot de passe doit contenir au moins 8 caractères.")
-    setIsBusy(false)
-    return
-  }
+    // Récupération du token de session admin pour authentifier l'appel
+    // vers /api/create-agent, qui exige désormais une vérification de rôle
+    // côté serveur avant de créer un compte agent.
+    const { data: { session } } = await supabase.auth.getSession()
 
-  const { data: existingUsers, error: fetchError } = await supabase
-    .from("utilisateur")
-    .select("email, telephone")
-    .or(`email.eq.${newAgent.email},telephone.eq.${newAgent.phone}`)
+    if (!session?.access_token) {
+      toast.dismiss(toastId)
+      toast.error("Session expirée", { description: "Veuillez vous reconnecter." })
+      return
+    }
 
-  if (fetchError) { toast.error("Erreur lors de la vérification."); setIsBusy(false); return }
+    const res = await fetch("/api/create-agent", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        email: newAgent.email,
+        password: newAgent.password,
+        nom: `${newAgent.firstName} ${newAgent.name}`,
+        telephone: newAgent.phone,
+      }),
+    })
 
-  if (existingUsers && existingUsers.length > 0) {
-    if (existingUsers.some(u => u.email === newAgent.email)) toast.error("Cet email existe déjà.")
-    if (existingUsers.some(u => u.telephone === newAgent.phone)) toast.error("Ce numéro de téléphone existe déjà.")
-    setIsBusy(false)
-    return
-  }
+    const result = await res.json()
 
-  setShowCreateModal(false)
-  resetForm()
-  setIsBusy(false)
+    if (!res.ok) {
+      toast.dismiss(toastId)
+      toast.error("Erreur : " + (result.error || "Impossible de créer l'agent."))
+      return
+    }
 
-  const toastId = toast.loading("Création du compte en cours...")
-
-  const res = await fetch("/api/create-agent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+    setAgents(prev => [...prev, {
+      id: result.id,
+      name: newAgent.name,
+      firstName: newAgent.firstName,
       email: newAgent.email,
-      password: newAgent.password,
-      nom: `${newAgent.firstName} ${newAgent.name}`,
-      telephone: newAgent.phone,
-    }),
-  })
+      phone: newAgent.phone,
+      isOnline: false,
+      est_banni: false,
+      photo: undefined,
+      serviceId: "",
+      counterId: "",
+    } as Agent])
 
-  const result = await res.json()
-
-  if (!res.ok) {
     toast.dismiss(toastId)
-    toast.error("Erreur : " + (result.error || "Impossible de créer l'agent."))
-    return
+    toast.success("Agent créé avec succès !")
+
+    fetchAgents()
   }
-
-  
-  setAgents(prev => [...prev, {
-    id: result.id,
-    name: newAgent.name,
-    firstName: newAgent.firstName,
-    email: newAgent.email,
-    phone: newAgent.phone,
-    isOnline: false,
-    est_banni: false,
-    photo: undefined,
-    serviceId: "",
-    counterId: "",
-  } as Agent])
-
-  toast.dismiss(toastId)
-  toast.success("Agent créé avec succès !")
-
-  fetchAgents()
-}
 
   const handleAssign = async () => {
     if (!selectedAgent || !newAgent.counterId) {

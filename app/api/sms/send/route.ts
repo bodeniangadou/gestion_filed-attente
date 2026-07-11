@@ -6,6 +6,8 @@
  * - Appelle api.sms-gate.app (pas l'IP locale)
  * - Retourne messageId ou erreur
  * - NE JAMAIS exposer les credentials au client
+ * - Rate-limit par IP pour éviter le spam (pas d'authentification requise,
+ *   car les patients anonymes doivent pouvoir recevoir des SMS)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -22,9 +24,36 @@ interface SmsGatewayResponse {
   [key: string]: any;
 }
 
+// Rate limiting simple en mémoire : IP -> timestamp du dernier envoi.
+// NOTE : ceci fonctionne correctement sur un serveur mono-instance.
+// Sur un déploiement multi-instance, chaque instance a sa propre mémoire
+// et ce compteur n'est pas partagé. Pour un rate-limit fiable à grande
+// échelle, il faudrait une table Supabase dédiée ou un service comme
+// Upstash Redis.
+const lastSmsSentByIp = new Map<string, number>();
+const MIN_DELAY_MS = 5_000; // 5 secondes entre deux SMS pour la même IP
+
+function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return "unknown";
+}
+
 export async function POST(request: NextRequest) {
   try {
-    // 1. Vérification des credentials
+    // 1. Rate limiting par IP
+    const ip = getClientIp(request);
+    const now = Date.now();
+    const lastSent = lastSmsSentByIp.get(ip) ?? 0;
+
+    if (now - lastSent < MIN_DELAY_MS) {
+      return NextResponse.json(
+        { error: "Trop de requêtes, veuillez patienter quelques secondes." },
+        { status: 429 }
+      );
+    }
+
+    // 2. Vérification des credentials
     const SMS_GATEWAY_URL = process.env.SMS_GATEWAY_URL;
     const SMS_GATEWAY_USERNAME = process.env.SMS_GATEWAY_USERNAME;
     const SMS_GATEWAY_PASSWORD = process.env.SMS_GATEWAY_PASSWORD;
@@ -37,7 +66,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Parsing de la requête
+    // 3. Parsing de la requête
     const body: SmsRequest = await request.json();
     const { phone, message } = body;
 
@@ -48,12 +77,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Préparation de l'authentification (Basic Auth)
+    // 4. On marque l'envoi AVANT l'appel réseau pour éviter un double
+    // envoi si deux requêtes partent presque en même temps depuis la même IP.
+    lastSmsSentByIp.set(ip, now);
+
+    // 5. Préparation de l'authentification (Basic Auth) vers la passerelle
     const credentials = Buffer.from(
       `${SMS_GATEWAY_USERNAME}:${SMS_GATEWAY_PASSWORD}`
     ).toString("base64");
 
-   
     const gatewayResponse = await fetch(SMS_GATEWAY_URL, {
       method: "POST",
       headers: {
@@ -79,8 +111,6 @@ export async function POST(request: NextRequest) {
     }
 
     const gatewayData: SmsGatewayResponse = await gatewayResponse.json();
-
-    // 5. Extraction du messageId (adapter selon la réponse de ton Gateway)
     const messageId = gatewayData.messageId || gatewayData.id || gatewayData.status;
 
     if (!messageId) {

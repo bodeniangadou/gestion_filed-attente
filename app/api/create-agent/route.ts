@@ -8,6 +8,32 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(req: Request) {
+  // 1. Récupération du token envoyé par le client
+  const authHeader = req.headers.get("authorization")
+  const token = authHeader?.replace("Bearer ", "")
+
+  if (!token) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 })
+  }
+
+  // 2. Vérification que le token correspond à un utilisateur réel
+  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+  if (authError || !user) {
+    return NextResponse.json({ error: "Session invalide" }, { status: 401 })
+  }
+
+  // 3. Vérification que cet utilisateur est bien admin en base
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from("utilisateur")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  if (profileError || profile?.role !== "admin") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 })
+  }
+
+  // 4. Création de l'agent (logique inchangée)
   const { email, password, nom, telephone } = await req.json()
 
   const { data, error } = await supabaseAdmin.auth.admin.createUser({
