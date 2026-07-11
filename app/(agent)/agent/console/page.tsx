@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApp, Ticket, Counter } from "@/lib/app-context";
 import { Button } from "@/components/ui/button" 
 import { toast } from "sonner";
-import { sendCalledSms, sendAbsentSms } from "@/lib/sms-confirmation";
+import { sendCalledSms, sendAbsentSms, sendCompletedSms } from "@/lib/sms-confirmation";
 import {
   Phone,
   PhoneOff,
@@ -221,11 +221,28 @@ export default function Page() {
     if (!patientActuel || !consultationActive || actionLoading) return;
     setActionLoading(true);
     try {
-      await completeService(patientActuel.id);
+      const patientAvantReset = patientActuel;
+      await completeService(patientAvantReset.id);
       setPatientActuel(null);
       setConsultationActive(false);
       setDebutConsultation(null);
       setNbTraites((n) => n + 1);
+
+      if (!patientAvantReset.phone) {
+        console.warn(`Pas de SMS "terminé" envoyé pour ticket ${patientAvantReset.number} : aucun numéro de téléphone enregistré.`);
+      } else {
+        const result = await sendCompletedSms({
+          id: patientAvantReset.id,
+          number: patientAvantReset.number,
+          phone: patientAvantReset.phone,
+          userName: patientAvantReset.userName,
+          service: patientAvantReset.service,
+        });
+
+        if (!result) {
+          toast.error("SMS de fin de consultation non envoyé.", { description: "Vérifiez la connexion à SMS Gateway." });
+        }
+      }
     } finally {
       setActionLoading(false);
     }
