@@ -1,8 +1,21 @@
+/**
+ * app-context.tsx COMPLET
+ *
+ * Version avec :
+ * ✅ Import SMS functions
+ * ✅ sentSmsKeysRef pour éviter doublons (presque le tour)
+ * ✅ callNextPatient() envoie SMS "c'est le tour"
+ * ✅ useEffect pour "presque le tour" (position ≤ 2)
+ * ✅ NOUVEAU : SMS "annulé" quand un guichet ferme et annule les tickets en attente
+ * ✅ NOUVEAU : SMS "redirigé" quand un guichet ferme et redirige les tickets vers un autre guichet
+ */
+
 "use client"
 
 import { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
+import { sendAlmostTurnSms, sendCalledSms, sendCancelledByStaffSms, sendRedirectedSms } from "@/lib/sms-confirmation"
 
 export type UserRole = "visitor" | "patient" | "agent" | "admin"
 
@@ -79,13 +92,8 @@ export interface HospitalSettings {
   voiceAnnouncements: boolean
 }
 
-// Statuts considérés comme "actifs" pour un ticket (déjà normalisés en anglais
-// par fetchTickets, quelle que soit la valeur brute stockée en base).
 const ACTIVE_TICKET_STATUSES: Ticket["statut"][] = ["waiting", "called", "serving"]
 
-// Résultat retourné par requestCloseCounter : soit le guichet a été fermé
-// directement (pas de ticket en attente), soit l'UI doit afficher un dialog
-// de confirmation avec les tickets en attente + le guichet de repli éventuel.
 export interface CloseCounterRequestResult {
   needsConfirmation: boolean
   pendingTickets: Ticket[]
@@ -132,10 +140,6 @@ interface AppContextType {
   recallPatient: (ticketId: string) => Promise<void>
   completeService: (ticketId: string) => Promise<void>
   toggleCounter: (open: boolean, options?: { silent?: boolean }) => Promise<void>
-  // ── Fermeture de guichet unifiée : logique unique partagée par toutes les
-  // pages agent (Dashboard, Console d'appel...). Garantit un comportement
-  // identique partout : fermeture directe si aucun ticket en attente, sinon
-  // l'appelant doit proposer les options rediriger / conserver / annuler.
   requestCloseCounter: () => Promise<CloseCounterRequestResult>
   redirectPendingTicketsAndClose: (ticketIds: string[], targetCounterId: string) => Promise<boolean>
   cancelPendingTicketsAndClose: (ticketIds: string[]) => Promise<boolean>
@@ -185,6 +189,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
 
+  // Ref pour éviter d'envoyer le même SMS "presque le tour" 2x
+  const sentSmsKeysRef = useRef<Set<string>>(new Set())
+
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
       const savedUser = localStorage.getItem("app-user")
@@ -193,10 +200,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return null
   })
 
-  // ── Anti double-toast : quand l'agent ferme/ouvre son guichet lui-même,
-  // ce changement remonte aussi via le canal Realtime "guichet". Sans garde,
-  // ça déclenchait un 2e toast ("Guichet fermé") en plus de celui de l'action.
-  // selfToggleRef permet de dire "ce changement vient de moi, ne re-notifie pas".
   const selfToggleRef = useRef(false)
   const prevOwnCounterActiveRef = useRef<boolean | null>(null)
 
@@ -300,7 +303,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         serviceId: g.id_service,
         serviceName: g.service?.nom || "Non assigné",
         id_agent_actuel: g.id_agent_actuel,
-        // CORRIGÉ : la colonne réelle est "statut" avec valeur "Actif"/"Inactif"
         isActive: g.statut === "Actif",
         ticketsServed: 0,
       })))
@@ -489,8 +491,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .eq("id", nextTicket.id)
     if (error) { console.error("Erreur appel BDD:", error); await fetchTickets(); return null }
     await fetchTickets()
+
+    // Envoyer SMS "c'est le tour"
+    const updatedTicket = tickets.find((t) => t.id === nextTicket.id)
+    if (updatedTicket?.phone) {
+      await sendCalledSms({
+        id: updatedTicket.id,
+        number: updatedTicket.number,
+        phone: updatedTicket.phone,
+        userName: updatedTicket.userName,
+        counterName: updatedTicket.counterName,
+        service: updatedTicket.service,
+      })
+    }
+
     return { ...nextTicket, statut: "called", calledAt, position: 0, counterId: counter.id, counterName: counter.name }
-  }, [getAgentQueue, getAgentCounter, fetchTickets])
+  }, [getAgentQueue, getAgentCounter, fetchTickets, tickets])
 
   const markAbsent = useCallback(async (ticketId: string) => {
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "absent" as const } : t))
@@ -523,11 +539,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await fetchTickets()
   }, [getAgentCounter, fetchTickets])
 
-  // ── Ouverture / fermeture de guichet — SOURCE UNIQUE utilisée par toutes
-  // les pages agent. Met à jour à la fois "guichet.statut" ET "utilisateur.is_online"
-  // (avant, seule la page Dashboard le faisait, pas la Console d'appel — incohérence
-  // corrigée ici). Un seul toast par action, avec un id fixe ("counter-status") pour
-  // que les toasts se remplacent au lieu de s'empiler.
   const toggleCounter = useCallback(async (open: boolean, options?: { silent?: boolean }) => {
     const counter = getAgentCounter()
     if (!counter) return
@@ -553,9 +564,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [getAgentCounter, fetchCounters, user])
 
-  // ── Détecte une fermeture EXTERNE du guichet (admin, autre appareil...) et
-  // prévient l'agent — mais seulement si ce n'est pas lui-même qui vient de le
-  // faire (selfToggleRef), pour éviter le double toast.
   useEffect(() => {
     if (!user || user.role !== "agent") return
     const ownCounter = counters.find(c => c.id_agent_actuel === user.id)
@@ -576,10 +584,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     prevOwnCounterActiveRef.current = ownCounter.isActive
   }, [counters, user])
 
-  // ── Demande de fermeture : ferme directement si aucun ticket en attente sur
-  // le guichet de l'agent. S'il y en a, ne ferme PAS et retourne les infos
-  // nécessaires pour que la page affiche son dialog de confirmation (rediriger /
-  // conserver / annuler les tickets), avec le guichet de repli déjà calculé.
   const requestCloseCounter = useCallback(async (): Promise<CloseCounterRequestResult> => {
     const counter = getAgentCounter()
     if (!counter) return { needsConfirmation: false, pendingTickets: [], availableCounter: null }
@@ -603,6 +607,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const redirectPendingTicketsAndClose = useCallback(async (ticketIds: string[], targetCounterId: string) => {
     try {
+      // On garde une copie des tickets concernés AVANT la mise à jour,
+      // pour avoir leur téléphone/nom au moment d'envoyer le SMS.
+      const ticketsToNotify = tickets.filter(t => ticketIds.includes(t.id))
+
       const { error } = await supabase
         .from("ticket")
         .update({ id_guichet: targetCounterId, statut: "waiting" })
@@ -611,6 +619,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await fetchTickets()
       await toggleCounter(false, { silent: true })
       const targetCounter = counters.find(c => c.id === targetCounterId)
+
+      // Notifie chaque patient concerné par SMS (si téléphone connu)
+      for (const t of ticketsToNotify) {
+        if (t.phone) {
+          await sendRedirectedSms({
+            id: t.id,
+            number: t.number,
+            phone: t.phone,
+            userName: t.userName,
+            newCounterName: targetCounter?.number,
+            service: t.service,
+          })
+        }
+      }
+
       toast.success(
         `${ticketIds.length} ticket${ticketIds.length > 1 ? "s" : ""} redirigé${ticketIds.length > 1 ? "s" : ""} vers le guichet ${targetCounter?.number ?? ""}. Guichet fermé.`,
         { id: "counter-status" }
@@ -621,16 +644,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast.error("Erreur", { description: "Impossible de rediriger les tickets.", id: "counter-status" })
       return false
     }
-  }, [fetchTickets, toggleCounter, counters])
+  }, [fetchTickets, toggleCounter, counters, tickets])
 
   const cancelPendingTicketsAndClose = useCallback(async (ticketIds: string[]) => {
     try {
+      // Copie des tickets concernés AVANT annulation, pour le SMS
+      const ticketsToNotify = tickets.filter(t => ticketIds.includes(t.id))
+
       if (ticketIds.length > 0) {
         const { error } = await supabase.from("ticket").update({ statut: "cancelled" }).in("id", ticketIds)
         if (error) throw error
         await fetchTickets()
       }
       await toggleCounter(false, { silent: true })
+
+      // Notifie chaque patient concerné par SMS (si téléphone connu)
+      for (const t of ticketsToNotify) {
+        if (t.phone) {
+          await sendCancelledByStaffSms({
+            id: t.id,
+            number: t.number,
+            phone: t.phone,
+            userName: t.userName,
+            service: t.service,
+          })
+        }
+      }
+
       toast.success(
         `${ticketIds.length} ticket${ticketIds.length > 1 ? "s" : ""} annulé${ticketIds.length > 1 ? "s" : ""} et guichet fermé.`,
         { id: "counter-status" }
@@ -641,7 +681,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toast.error("Erreur", { description: "Impossible d'annuler les tickets.", id: "counter-status" })
       return false
     }
-  }, [fetchTickets, toggleCounter])
+  }, [fetchTickets, toggleCounter, tickets])
 
   const keepPendingTicketsAndClose = useCallback(async () => {
     await toggleCounter(false, { silent: true })
@@ -659,8 +699,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setServices(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
   }, [])
 
-  const deleteService = useCallback(async (id: string) => { // 1. Ajoute 'async'
-  // 2. Appel à Supabase pour supprimer dans la vraie base de données
+  const deleteService = useCallback(async (id: string) => {
   const { error } = await supabase
     .from("service")
     .delete()
@@ -671,10 +710,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return;
   }
 
-  // 3. Mise à jour de l'état local (ce que tu avais déjà)
   setServices(prev => prev.filter(s => s.id !== id));
   setCounters(prev => prev.filter(c => c.serviceId !== id));
-}, []); // 4. Vérifie que 'supabase' est bien accessible ici
+}, []);
+
   const createCounter = useCallback((counter: Omit<Counter, "id">): Counter => {
     const newCounter = { ...counter, id: `c-${Date.now()}` }
     setCounters(prev => [...prev, newCounter])
@@ -686,7 +725,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
  const deleteCounter = useCallback(async (id: string) => {
-  // 1. Suppression dans la base de données
   const { error } = await supabase
     .from("guichet")
     .delete()
@@ -698,10 +736,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return;
   }
 
-  // 2. Mise à jour de l'affichage local
   setCounters(prev => prev.filter(c => c.id !== id));
   toast.success("Guichet supprimé avec succès.");
 }, []);
+
   const createAgent = useCallback((agent: Omit<Agent, "id">): Agent => {
     const newAgent = { ...agent, id: `a-${Date.now()}` }
     setAgents(prev => [...prev, newAgent])
@@ -741,13 +779,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const todayTickets = tickets.filter(t => new Date(t.createdAt) >= today)
     const completedToday = todayTickets.filter(t => t.statut === "completed")
-    // NOTE : depuis que startConsultation() met aussi à jour date_appel,
-    // calledAt représente le début RÉEL de la consultation (clic "Démarrer"),
-    // pas seulement l'heure d'appel au guichet. avgWaitTime mesure donc le
-    // temps total vécu par le patient jusqu'à sa prise en charge effective,
-    // et non plus uniquement le temps jusqu'à l'appel. C'est volontaire :
-    // un seul champ date_appel ne peut pas porter les deux informations
-    // sans ajouter une colonne dédiée en base.
     const totalWaitTime = completedToday.reduce((acc, t) => {
       if (t.calledAt && t.createdAt) return acc + (new Date(t.calledAt).getTime() - new Date(t.createdAt).getTime())
       return acc
@@ -787,6 +818,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     return () => subscription.unsubscribe()
   }, [loadUserProfile])
+
+  // useEffect : détecte "presque le tour" (position ≤ 2)
+  // et envoie un SMS une seule fois via sentSmsKeysRef
+  useEffect(() => {
+    tickets.forEach((ticket) => {
+      if (ticket.statut !== "waiting" || !ticket.phone) return
+
+      const smsKey = `almost_turn_${ticket.id}`
+
+      if (
+        ticket.position &&
+        ticket.position <= 2 &&
+        !sentSmsKeysRef.current.has(smsKey)
+      ) {
+        sendAlmostTurnSms({
+          id: ticket.id,
+          number: ticket.number,
+          phone: ticket.phone,
+          userName: ticket.userName,
+          position: ticket.position,
+          service: ticket.service,
+        })
+        sentSmsKeysRef.current.add(smsKey)
+      }
+    })
+  }, [tickets])
 
   return (
     <AppContext.Provider value={{

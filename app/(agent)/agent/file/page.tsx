@@ -80,9 +80,7 @@ const getDuration = (ticket: any) => {
   }
   return `${days}j ${remainingHours}h ${minutes}min`;
 };
-// Palette harmonisée avec le reste de l'app (primary/emerald, ambre pour l'attente,
-// destructive pour les états négatifs, gris neutre pour fermé/annulé) — suppression
-// du bleu et du violet qui n'apparaissent nulle part ailleurs dans tes autres pages.
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   waiting:   { label: "En attente", className: "bg-amber-500/10 text-amber-700 border-amber-500/20" },
   called:    { label: "Appelé",     className: "bg-primary/10 text-primary border-primary/20" },
@@ -185,7 +183,6 @@ export default function FilePage() {
           </div>
         ) : (
           <>
-            {/* Stats — harmonisées avec le style StatCard utilisé sur le dashboard agent */}
             <div className="grid grid-cols-3 gap-3">
               {[
                 { label: "En attente", value: tabCounts.queue, color: "text-amber-600", iconBg: "bg-amber-500/10", icon: <Clock className="size-4 text-amber-600" /> },
@@ -204,7 +201,6 @@ export default function FilePage() {
               ))}
             </div>
 
-            {/* Recherche + tabs */}
             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
@@ -238,9 +234,7 @@ export default function FilePage() {
               </div>
             </div>
 
-            {/* Table — CORRIGÉ : un seul fondu (crossfade) sur tout le bloc au changement
-                d'onglet, au lieu d'une cascade ligne par ligne avec décalage vertical qui
-                donnait l'effet de "saut" visuel à chaque clic sur un tab. */}
+      
             <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">

@@ -14,6 +14,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Html5Qrcode } from "html5-qrcode"
 import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
+import { sendConfirmationSms } from "@/lib/sms-confirmation"
 
 // FORMAT : {Préfixe}{numéro padStart 3}
 // ex: C001, C047, C124
@@ -118,6 +119,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const [scannerError, setScannerError] = useState<string | null>(null)
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null)
   const [localTakenServices, setLocalTakenServices] = useState<string[]>([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Guard anti-toast : on mémorise le serviceId déjà traité pour ne pas
   // relancer handleTakeTicket à chaque retour sur la page (remontage du composant)
@@ -219,6 +221,18 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         if (error) throw error
 
         await fetchTickets()
+
+        // 🎯 NOUVEAU : Envoyer SMS de confirmation
+        if (user.phone) {
+          await sendConfirmationSms({
+            id: data.id,
+            number: ticketNumber,
+            phone: user.phone,
+            userName: `${user.firstName || ""} ${user.name || ""}`.trim(),
+            service: service,
+          })
+        }
+
         setLocalTakenServices(prev => [...prev, service.id])
         setNewTicket({
           code: data.code,
@@ -227,7 +241,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           position: currentPosition,
         })
         setShowSuccessModal(true)
-        toast.success("Ticket créé avec succès !")
+        toast.success("Ticket créé ! SMS de confirmation envoyé.")
 
       } catch (err) {
         console.error(err)
@@ -239,8 +253,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   }, [services, counters, agents, tickets, user, isAdmin, isRealPatient, localTakenServices, fetchTickets])
 
   const handleSubmitForm = async () => {
-    if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom) return
+    if (!selectedService || !selectedCounter || !formData.nom || !formData.prenom || isSubmitting) return
 
+    setIsSubmitting(true)
     const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
 
     try {
@@ -257,6 +272,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         toast.error("Nom déjà enregistré", {
           description: `Un ticket actif existe déjà au nom de ${fullFormName} pour ce service.`,
         })
+        setIsSubmitting(false)
         return
       }
 
@@ -305,6 +321,8 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     } catch (err) {
       console.error(err)
       toast.error("Erreur", { description: "Échec de la validation du ticket." })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -592,9 +610,9 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
             <Button
               className="flex-1 bg-emerald text-primary-foreground hover:bg-emerald/90"
               onClick={handleSubmitForm}
-              disabled={!formData.nom || !formData.prenom}
+              disabled={!formData.nom || !formData.prenom || isSubmitting}
             >
-              Confirmer
+              {isSubmitting ? "Validation..." : "Confirmer"}
             </Button>
           </div>
         </DialogContent>

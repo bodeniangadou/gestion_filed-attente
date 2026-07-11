@@ -1,3 +1,8 @@
+/**
+ * LandingView.tsx COMPLET
+ * Version avec SMS intégré
+ */
+
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
@@ -20,13 +25,13 @@ import {
 import { toast } from "sonner"
 import { useApp, Service, Counter, Ticket } from "@/lib/app-context"
 import { TicketTrackingModal } from "./TicketTrackingModal"
+import { sendConfirmationSms } from "@/lib/sms-confirmation"
 
 interface LandingViewProps {
   onNavigate: (tab: string) => void
   onScanQR: () => void
   onTakeTicket: () => void
   onLogin: () => void
-  // NOUVEAU : service scanné transmis depuis page.tsx comme prop React
   pendingServiceId?: string | null
   onPendingServiceConsumed?: () => void
 }
@@ -49,7 +54,6 @@ const testimonials = [
   { name: "Fatoumata K.", text: "Le suivi en temps réel me permet de mieux gérer mon temps. Merci Rang+ !", rating: 5 },
 ]
 
-// Logique de disponibilité — source unique utilisée partout
 const checkServiceStatus = (
   service: Service,
   counters: Counter[],
@@ -97,13 +101,10 @@ function getServicePrefix(name: string): string {
   return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z]/g, "").substring(0, 1) || "X"
 }
 
-// CORRIGÉ : génère le numéro avec le compteur du jour passé en paramètre
 function generateDailyTicketCode(serviceName: string, todayCount: number): string {
   return `${getServicePrefix(serviceName)}${String(todayCount).padStart(3, "0")}`
 }
 
-// NOUVEAU : compte les tickets du jour pour ce service dans Supabase
-// Reset automatique chaque jour — on ne compte que ceux créés aujourd'hui
 async function getTodayTicketCount(serviceId: string): Promise<number> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -262,9 +263,6 @@ export function LandingView({
     setShowTicketModal(true)
   }
 
-  // CORRIGÉ : surveille pendingServiceId (prop React) au lieu de window.location.search
-  // Avant, on lisait l'URL mais le useEffect ne se redéclenchait pas quand l'URL changeait
-  // car ses dépendances (services, selectedService...) ne bougeaient pas.
   useEffect(() => {
     if (!pendingServiceId || services.length === 0) return
 
@@ -293,12 +291,10 @@ export function LandingView({
       setShowTicketModal(true)
     }
 
-    // Consomme le pending pour éviter une boucle
     onPendingServiceConsumed?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingServiceId, services, servicesWithStatus])
 
-  // Lecture URL initiale (scan QR depuis URL directe ou partage de lien)
   useEffect(() => {
     if (services.length === 0 || selectedService) return
     const serviceId =
@@ -387,7 +383,6 @@ export function LandingView({
       const fullName = formData.nomComplet.trim()
       const phoneValue = formData.telephone.trim()
 
-      // Vérification doublon par nom
       const { data: byName, error: e1 } = await supabase
         .from("ticket")
         .select("id")
@@ -401,7 +396,6 @@ export function LandingView({
         return
       }
 
-      // Vérification doublon par téléphone
       const { data: byPhone, error: e2 } = await supabase
         .from("ticket")
         .select("id")
@@ -429,7 +423,6 @@ export function LandingView({
         if (w < minWaiting) { minWaiting = w; targetCounter = counter }
       })
 
-      // CORRIGÉ : comptage du jour seulement → numéro repart de 1 chaque jour
       const todayCount = await getTodayTicketCount(selectedService.id)
       const ticketNumber = generateDailyTicketCode(selectedService.name, todayCount + 1)
 
@@ -449,12 +442,22 @@ export function LandingView({
       if (error) throw error
 
       await fetchTickets()
+
+      // 🎯 NOUVEAU : Envoyer SMS de confirmation
+      await sendConfirmationSms({
+        id: data.id,
+        number: ticketNumber,
+        phone: phoneValue,
+        userName: fullName,
+        service: selectedService,
+      })
+
       setTrackedTicketIds((prev) => Array.from(new Set([...prev, data.id])))
       setLastCreatedTicketId(data.id)
       setShowTicketModal(false)
       setShowSuccessModal(true)
       setFormData({ nomComplet: "", telephone: "" })
-      toast.success("Ticket créé avec succès !")
+      toast.success("Ticket créé ! SMS de confirmation envoyé.")
     } catch (err) {
       console.error(err)
       toast.error("Erreur", { description: "Impossible d'enregistrer votre ticket." })

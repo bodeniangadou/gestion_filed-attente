@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApp, Ticket, Counter } from "@/lib/app-context";
 import { Button } from "@/components/ui/button" 
 import { toast } from "sonner";
+import { sendCalledSms, sendAbsentSms } from "@/lib/sms-confirmation";
 import {
   Phone,
   PhoneOff,
@@ -65,14 +66,6 @@ export default function Page() {
     syntheseVocale.current = utterance;
   }, []);
 
-  // ── Synchro patient courant depuis les tickets (source de vérité = DB).
-  // Le début de consultation n'est plus un Date.now() local : on le lit
-  // directement depuis ticket.calledAt (colonne date_appel), qui est
-  // désormais mis à jour par startConsultation() au clic "Démarrer".
-  // Avantages :
-  //  - même durée affichée partout (autre écran, autre agent, autre onglet)
-  //  - un rechargement de page ne fait plus repartir le chrono à 0 :
-  //    calledAt est persisté en base, donc récupéré tel quel après reload.
   useEffect(() => {
     if (!counter) {
       setPatientActuel(null);
@@ -106,7 +99,6 @@ export default function Page() {
   useEffect(() => {
     let intervalle: ReturnType<typeof setInterval> | undefined;
     if (consultationActive && debutConsultation) {
-      // calcul immédiat pour éviter un affichage à 0 pendant 1s après reload
       setDureeConsultationReelle(
         Math.floor((Date.now() - debutConsultation) / 1000)
       );
@@ -157,15 +149,15 @@ export default function Page() {
     if (!patientActuel || consultationActive || actionLoading) return;
     setActionLoading(true);
     try {
-      // startConsultation met à jour statut="serving" ET date_appel en base ;
-      // le useEffect de synchro (tickets -> patientActuel) reprendra ensuite
-      // debutConsultation depuis ticket.calledAt renvoyé par la DB.
       await startConsultation(patientActuel.id);
     } finally {
       setActionLoading(false);
     }
   };
 
+  // Rappeler : relance l'annonce vocale locale ET renvoie le SMS
+  // "c'est votre tour" au patient (utile s'il ne s'est pas présenté
+  // ou n'a pas vu le premier SMS).
   const rappeler = async () => {
     if (!patientActuel || actionLoading) return;
     setActionLoading(true);
@@ -173,6 +165,23 @@ export default function Page() {
       await recallPatient(patientActuel.id);
       setAnnonceKey((k) => k + 1);
       annoncerPatient(patientActuel);
+
+      if (patientActuel.phone) {
+        const result = await sendCalledSms({
+          id: patientActuel.id,
+          number: patientActuel.number,
+          phone: patientActuel.phone,
+          userName: patientActuel.userName,
+          counterName: patientActuel.counterName || counter?.name,
+          service: patientActuel.service,
+        });
+
+        if (result) {
+          toast.success("SMS de rappel renvoyé au patient.");
+        } else {
+          toast.error("Le SMS de rappel n'a pas pu être envoyé.");
+        }
+      }
     } finally {
       setActionLoading(false);
     }
@@ -183,10 +192,25 @@ export default function Page() {
     if (confirm(`Absent·e : ${patientActuel.userName} ?`)) {
       setActionLoading(true);
       try {
-        await markAbsent(patientActuel.id);
+        const patientAvantReset = patientActuel;
+        await markAbsent(patientAvantReset.id);
         setPatientActuel(null);
         setConsultationActive(false);
         setDebutConsultation(null);
+
+        if (patientAvantReset.phone) {
+          const result = await sendAbsentSms({
+            id: patientAvantReset.id,
+            number: patientAvantReset.number,
+            phone: patientAvantReset.phone,
+            userName: patientAvantReset.userName,
+            service: patientAvantReset.service,
+          });
+
+          if (!result) {
+            toast.error("Le SMS d'absence n'a pas pu être envoyé.");
+          }
+        }
       } finally {
         setActionLoading(false);
       }
