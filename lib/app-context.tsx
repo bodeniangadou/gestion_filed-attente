@@ -6,8 +6,11 @@
  * ✅ sentSmsKeysRef pour éviter doublons (presque le tour)
  * ✅ callNextPatient() envoie SMS "c'est le tour"
  * ✅ useEffect pour "presque le tour" (position ≤ 2)
- * ✅ NOUVEAU : SMS "annulé" quand un guichet ferme et annule les tickets en attente
- * ✅ NOUVEAU : SMS "redirigé" quand un guichet ferme et redirige les tickets vers un autre guichet
+ * ✅ SMS "annulé" quand un guichet ferme et annule les tickets en attente
+ * ✅ SMS "redirigé" quand un guichet ferme et redirige les tickets vers un autre guichet
+ * ✅ NOUVEAU : ticketsLoaded — expose si le premier fetchTickets() est terminé,
+ *    pour éviter que les composants (ex: LandingView) suppriment un ticket suivi
+ *    du localStorage avant que les vraies données Supabase soient arrivées.
  */
 
 "use client"
@@ -109,6 +112,7 @@ interface AppContextType {
   tickets: Ticket[]
   setTickets: (tickets: Ticket[] | ((prev: Ticket[]) => Ticket[])) => void
   fetchTickets: () => Promise<void>
+  ticketsLoaded: boolean
   services: Service[]
   setServices: (services: Service[] | ((prev: Service[]) => Service[])) => void
   fetchServices: () => Promise<void>
@@ -184,6 +188,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isBusy, setIsBusy] = useState(false)
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
+  // NOUVEAU : passe à true dès que le premier fetchTickets() (succès OU échec) est terminé.
+  // Sert de garde pour les composants qui font du nettoyage basé sur `tickets`
+  // (ex: LandingView qui purge son localStorage) afin qu'ils ne confondent pas
+  // "pas encore chargé" avec "ticket introuvable".
+  const [ticketsLoaded, setTicketsLoaded] = useState(false)
   const [services, setServices] = useState<Service[]>([])
   const [counters, setCounters] = useState<Counter[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
@@ -244,51 +253,57 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const fetchTickets = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("ticket")
-      .select("*, service:id_service(nom), guichet:id_guichet(numero)")
+    try {
+      const { data, error } = await supabase
+        .from("ticket")
+        .select("*, service:id_service(nom), guichet:id_guichet(numero)")
 
-    if (error) { console.error("Erreur chargement tickets:", error); return }
+      if (error) { console.error("Erreur chargement tickets:", error); return }
 
-    if (data) {
-      const mappedTickets = data.map((t: any) => {
-        let appStatus: Ticket["statut"] = "waiting"
-        const dbStatus = (t.statut || "En attente").toLowerCase()
-        if (dbStatus.includes("attente") || dbStatus === "waiting") appStatus = "waiting"
-        else if (dbStatus.includes("appel") || dbStatus === "called") appStatus = "called"
-        else if (dbStatus.includes("cours") || dbStatus === "serving") appStatus = "serving"
-        else if (dbStatus.includes("termine") || dbStatus === "completed") appStatus = "completed"
-        else if (dbStatus.includes("absent")) appStatus = "absent"
-        else if (dbStatus.includes("annule") || dbStatus === "cancelled") appStatus = "cancelled"
+      if (data) {
+        const mappedTickets = data.map((t: any) => {
+          let appStatus: Ticket["statut"] = "waiting"
+          const dbStatus = (t.statut || "En attente").toLowerCase()
+          if (dbStatus.includes("attente") || dbStatus === "waiting") appStatus = "waiting"
+          else if (dbStatus.includes("appel") || dbStatus === "called") appStatus = "called"
+          else if (dbStatus.includes("cours") || dbStatus === "serving") appStatus = "serving"
+          else if (dbStatus.includes("termine") || dbStatus === "completed") appStatus = "completed"
+          else if (dbStatus.includes("absent")) appStatus = "absent"
+          else if (dbStatus.includes("annule") || dbStatus === "cancelled") appStatus = "cancelled"
 
-        return {
-          id: t.id,
-          number: t.code,
-          service: { id: t.id_service, name: t.service?.nom || "Non défini" } as any,
-          counterId: t.id_guichet,
-          counterName: t.guichet?.numero || "Non assigné",
-          userId: t.id_patient_connecte || t.telephone_patient || "Anonyme",
-          phone: t.telephone_patient || undefined,
-          userName: t.patient_nom || "Anonyme",
-          statut: appStatus,
-          priorite: t.priorite || 0,
-          position: 0,
-          totalInQueue: 0,
-          createdAt: new Date(t.created_at),
-          calledAt: t.date_appel ? new Date(t.date_appel) : undefined,
-          completedAt: t.date_fin ? new Date(t.date_fin) : undefined,
-        }
-      })
+          return {
+            id: t.id,
+            number: t.code,
+            service: { id: t.id_service, name: t.service?.nom || "Non défini" } as any,
+            counterId: t.id_guichet,
+            counterName: t.guichet?.numero || "Non assigné",
+            userId: t.id_patient_connecte || t.telephone_patient || "Anonyme",
+            phone: t.telephone_patient || undefined,
+            userName: t.patient_nom || "Anonyme",
+            statut: appStatus,
+            priorite: t.priorite || 0,
+            position: 0,
+            totalInQueue: 0,
+            createdAt: new Date(t.created_at),
+            calledAt: t.date_appel ? new Date(t.date_appel) : undefined,
+            completedAt: t.date_fin ? new Date(t.date_fin) : undefined,
+          }
+        })
 
-      const finalTickets: Ticket[] = mappedTickets.map((ticket, _, all) => {
-        if (ticket.statut !== "waiting") return { ...ticket, position: 0, totalInQueue: 0 }
-        const queue = all
-          .filter(t => t.service.id === ticket.service.id && t.statut === "waiting")
-          .sort((a, b) => b.priorite !== a.priorite ? b.priorite - a.priorite : a.createdAt.getTime() - b.createdAt.getTime())
-        return { ...ticket, position: queue.findIndex(t => t.id === ticket.id) + 1, totalInQueue: queue.length }
-      })
+        const finalTickets: Ticket[] = mappedTickets.map((ticket, _, all) => {
+          if (ticket.statut !== "waiting") return { ...ticket, position: 0, totalInQueue: 0 }
+          const queue = all
+            .filter(t => t.service.id === ticket.service.id && t.statut === "waiting")
+            .sort((a, b) => b.priorite !== a.priorite ? b.priorite - a.priorite : a.createdAt.getTime() - b.createdAt.getTime())
+          return { ...ticket, position: queue.findIndex(t => t.id === ticket.id) + 1, totalInQueue: queue.length }
+        })
 
-      setTickets(finalTickets)
+        setTickets(finalTickets)
+      }
+    } finally {
+      // Même en cas d'erreur, on marque "chargé" pour ne jamais bloquer
+      // indéfiniment un composant qui attend ce flag.
+      setTicketsLoaded(true)
     }
   }, [])
 
@@ -849,7 +864,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider value={{
       user, isLoading, setUser,
       currentTicket, setCurrentTicket,
-      tickets, setTickets, fetchTickets,
+      tickets, setTickets, fetchTickets, ticketsLoaded,
       services, setServices, fetchServices,
       counters, setCounters, fetchCounters,
       agents, setAgents, fetchAgents,

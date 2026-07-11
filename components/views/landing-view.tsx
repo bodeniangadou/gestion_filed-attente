@@ -1,6 +1,14 @@
 /**
  * LandingView.tsx COMPLET
  * Version avec SMS intégré
+ *
+ * ✅ FIX : la purge de trackedTicketIds (localStorage) attend désormais
+ *    `ticketsLoaded` (exposé par app-context) avant de considérer qu'un
+ *    ticket suivi n'existe plus. Avant ce fix, au refresh de la page,
+ *    `tickets` valait encore [] pendant le tout premier rendu (le temps
+ *    que Supabase réponde), ce qui faisait croire que le ticket suivi
+ *    n'était plus actif et le supprimait immédiatement du localStorage —
+ *    d'où la perte du suivi à chaque actualisation du navigateur.
  */
 
 "use client"
@@ -139,7 +147,7 @@ export function LandingView({
   pendingServiceId,
   onPendingServiceConsumed,
 }: LandingViewProps) {
-  const { services, counters, tickets, agents, fetchTickets } = useApp()
+  const { services, counters, tickets, agents, fetchTickets, ticketsLoaded } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -185,12 +193,19 @@ export function LandingView({
     [trackedTicketIds, tickets]
   )
 
+  // FIX : on n'autorise le nettoyage (purge des IDs qui ne sont plus actifs)
+  // qu'une fois que ticketsLoaded === true, c'est-à-dire une fois que
+  // fetchTickets() a réellement reçu une réponse de Supabase au moins une fois.
+  // Avant ce garde-fou, au refresh, `tickets` valait [] le temps d'un rendu,
+  // ce qui faisait croire à tort que le ticket suivi n'existait plus et le
+  // supprimait du localStorage — d'où la perte du suivi à chaque actualisation.
   useEffect(() => {
+    if (!ticketsLoaded) return
     const stillActiveIds = trackedActiveTickets.map((t) => t.id)
     if (trackedTicketIds.some((id) => !stillActiveIds.includes(id))) {
       setTrackedTicketIds(stillActiveIds)
     }
-  }, [trackedActiveTickets, trackedTicketIds])
+  }, [trackedActiveTickets, trackedTicketIds, ticketsLoaded])
 
   const mostUrgentTicket: Ticket | null = useMemo(() => {
     if (trackedActiveTickets.length === 0) return null
@@ -443,7 +458,7 @@ export function LandingView({
 
       await fetchTickets()
 
-      // 🎯 NOUVEAU : Envoyer SMS de confirmation
+      // Envoyer SMS de confirmation
       await sendConfirmationSms({
         id: data.id,
         number: ticketNumber,
