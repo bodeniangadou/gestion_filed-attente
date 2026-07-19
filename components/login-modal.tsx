@@ -30,6 +30,8 @@ import {
   Stethoscope
 } from "lucide-react"
 
+type AuthMode = "login" | "register" | "role-select" 
+
 interface LoginModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -37,10 +39,14 @@ interface LoginModalProps {
   defaultMode?: AuthMode
 }
 
-type AuthMode = "login" | "register" | "role-select" 
-
 export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login" }: LoginModalProps) {
   const [mode, setMode] = useState<AuthMode>(defaultMode)
+  // entryMode garde en mémoire COMMENT la modal a été ouverte (depuis le bouton
+  // "Connexion" ou depuis le bouton "Inscription" de la navbar). Contrairement à
+  // `mode`, il n'est jamais modifié par la navigation interne (ex: clic sur
+  // "Créer un compte" depuis l'écran login). Il sert uniquement à savoir si on
+  // doit afficher le bouton "Retour" sur l'écran register.
+  const [entryMode, setEntryMode] = useState<AuthMode>(defaultMode)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter() 
   const [email, setEmail] = useState("")
@@ -49,11 +55,12 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
   const [lastName, setLastName] = useState("")
   const [phone, setPhone] = useState("")
 
-  // Quand la modal s'ouvre, on synchronise le mode affiché avec l'intention
-  // du bouton cliqué (Connexion vs Inscription), au lieu de toujours retomber sur "login".
+  // À chaque ouverture de la modal, on resynchronise mode ET entryMode sur le
+  // defaultMode reçu, pour que le bon écran s'affiche selon le bouton cliqué.
   useEffect(() => {
     if (open) {
       setMode(defaultMode)
+      setEntryMode(defaultMode)
     }
   }, [open, defaultMode])
 
@@ -64,6 +71,7 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
     setLastName("")
     setPhone("")
     setMode(defaultMode)
+    setEntryMode(defaultMode)
     setIsLoading(false)
   }
 
@@ -240,7 +248,8 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
       duration: 5000,
     })
 
-    setMode("login") 
+    setMode("login")
+    setEntryMode("login")
     setIsLoading(false)
     handleClose()
   }
@@ -354,13 +363,20 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
               className="p-6"
             >
               <DialogHeader className="mb-6">
-                <button 
-                  onClick={() => setMode("login")}
-                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
-                >
-                  <ArrowLeft className="size-4" />
-                  Retour
-                </button>
+                {/* Le bouton "Retour" n'a de sens que si on a navigué en interne
+                    depuis l'écran login (entryMode === "login"). Si la modal a
+                    été ouverte directement en mode register (clic sur
+                    "Inscription" dans la navbar), il n'y a pas d'écran précédent
+                    dans cette session de la modal, donc on ne l'affiche pas. */}
+                {entryMode === "login" && (
+                  <button 
+                    onClick={() => setMode("login")}
+                    className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+                  >
+                    <ArrowLeft className="size-4" />
+                    Retour
+                  </button>
+                )}
                 <DialogTitle className="text-xl">
                   Creer un compte
                 </DialogTitle>
