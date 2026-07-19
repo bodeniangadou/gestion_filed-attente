@@ -1,3 +1,5 @@
+
+
 "use client"
 
 import { useState } from "react"
@@ -10,6 +12,7 @@ import { Service } from "@/lib/app-context"
 export default function HomePage() {
   const router = useRouter()
   const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [loginMode, setLoginMode] = useState<"login" | "register">("login")
   const [isScannerOpen, setIsScannerOpen] = useState(false)
 
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
@@ -27,12 +30,12 @@ export default function HomePage() {
     setIsScannerOpen(true)
   }
 
-  const handleLogin = () => {
+  const handleLogin = (mode: "login" | "register" = "login") => {
+    setLoginMode(mode)
     setIsLoginOpen(true)
   }
 
   const handleServiceScanned = (service: Service) => {
-  
     setIsScannerOpen(false)
     setPendingServiceId(service.id)
   }
@@ -51,6 +54,7 @@ export default function HomePage() {
       <LoginModal
         open={isLoginOpen}
         onOpenChange={setIsLoginOpen}
+        defaultMode={loginMode}
         onSuccess={() => {
           console.log("Utilisateur connecté avec succès !")
         }}

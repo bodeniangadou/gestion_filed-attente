@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
 import { motion, AnimatePresence } from "framer-motion"
 import { useRouter } from "next/navigation"
@@ -34,12 +34,13 @@ interface LoginModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
+  defaultMode?: AuthMode
 }
 
 type AuthMode = "login" | "register" | "role-select" 
 
-export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
-  const [mode, setMode] = useState<AuthMode>("login")
+export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login" }: LoginModalProps) {
+  const [mode, setMode] = useState<AuthMode>(defaultMode)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter() 
   const [email, setEmail] = useState("")
@@ -48,13 +49,21 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
   const [lastName, setLastName] = useState("")
   const [phone, setPhone] = useState("")
 
+  // Quand la modal s'ouvre, on synchronise le mode affiché avec l'intention
+  // du bouton cliqué (Connexion vs Inscription), au lieu de toujours retomber sur "login".
+  useEffect(() => {
+    if (open) {
+      setMode(defaultMode)
+    }
+  }, [open, defaultMode])
+
   const resetForm = () => {
     setEmail("")
     setPassword("")
     setFirstName("")
     setLastName("")
     setPhone("")
-    setMode("login")
+    setMode(defaultMode)
     setIsLoading(false)
   }
 
