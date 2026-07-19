@@ -86,9 +86,7 @@ export default function AgentDashboard() {
   const [showCloseDialog,   setShowCloseDialog]   = useState(false)
   const [pendingTickets,    setPendingTickets]     = useState<Ticket[]>([])
 
-  // Le guichet de repli est calculé une seule fois, à l'ouverture du dialog
-  // (dans requestCloseCounter), donc le bouton "Rediriger" est désactivé dès
-  // l'affichage si aucun autre guichet actif n'existe pour ce service.
+  
   const [availableCounter,  setAvailableCounter]  = useState<Counter | null>(null)
   const [isCheckingCounters, setIsCheckingCounters] = useState(false)
 
@@ -144,14 +142,12 @@ export default function AgentDashboard() {
     setDateRange({ from: r.from, to: r.to })
   }
 
-  // ── Ouverture du guichet — un seul point d'entrée pour le bandeau et la carte du bas
   const handleOpenCounter = useCallback(async () => {
     setIsToggling(true)
     try { await toggleCounter(true) } finally { setIsToggling(false) }
   }, [toggleCounter])
 
-  // ── Demande de fermeture : ferme direct si rien en attente, sinon ouvre le dialog
-  // avec les tickets + le guichet de repli déjà résolus par le contexte.
+
   const handleRequestClose = useCallback(async () => {
     setIsCheckingCounters(true)
     const result = await requestCloseCounter()
@@ -220,7 +216,6 @@ export default function AgentDashboard() {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
 
-      {/* Header sticky */}
       <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-4">
@@ -253,7 +248,6 @@ export default function AgentDashboard() {
         </div>
       </div>
 
-      {/* Bandeau guichet fermé */}
       <AnimatePresence>
         {!counter.isActive && (
           <motion.div
@@ -291,7 +285,6 @@ export default function AgentDashboard() {
 
       <div className="mx-auto max-w-5xl p-6 space-y-6">
 
-        {/* Filtre date */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             {(Object.keys(PRESET_LABELS) as Array<Exclude<DatePreset,"custom">>).map(preset => (
@@ -325,7 +318,6 @@ export default function AgentDashboard() {
           </Popover>
         </div>
 
-        {/* Stats */}
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
           <StatCard icon={Users}       value={ticketStats.waiting}   label="En attente" />
           <StatCard icon={CheckCircle} value={ticketStats.completed} label="Traités" />
@@ -336,14 +328,12 @@ export default function AgentDashboard() {
           <StatCard icon={Clock}       value={`~${Math.round(queue.length * 5)}`} label="min attente" />
         </div>
 
-        {/* Graphiques */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <DailyEvolution />
           <TicketsDistribution />
           <RecentActivities />
         </div>
 
-        {/* Bouton fermeture bas de page */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <Card className={counter.isActive ? "border-emerald-200 bg-emerald-50/50" : "border-muted bg-muted/20"}>
             <CardContent className="p-4 flex items-center justify-between">
@@ -381,7 +371,6 @@ export default function AgentDashboard() {
         </motion.div>
       </div>
 
-      {/* ─── Dialog fermeture avec tickets en attente ─── */}
      <Dialog open={showCloseDialog} onOpenChange={setShowCloseDialog}>
   <DialogContent className="sm:max-w-md rounded-2xl">
     <DialogHeader>
@@ -399,7 +388,6 @@ export default function AgentDashboard() {
     </DialogHeader>
 
     <div className="space-y-2 mt-4">
-      {/* Option 1 : Rediriger */}
       <Button
         onClick={handleRedirectAndClose}
         disabled={isProcessingClose || !availableCounter}
@@ -415,7 +403,6 @@ export default function AgentDashboard() {
         </div>
       </Button>
 
-      {/* Option 2 : Conserver */}
       <Button
         onClick={handleKeepWaitingAndClose}
         disabled={isProcessingClose}
@@ -429,7 +416,6 @@ export default function AgentDashboard() {
         </div>
       </Button>
 
-      {/* Option 3 : Annuler */}
       <Button
         onClick={handleCancelAndClose}
         disabled={isProcessingClose}
@@ -443,7 +429,6 @@ export default function AgentDashboard() {
         </div>
       </Button>
 
-      {/* Option 4 : Rester ouvert */}
       <Button
         onClick={handleStayOpen}
         variant="ghost"

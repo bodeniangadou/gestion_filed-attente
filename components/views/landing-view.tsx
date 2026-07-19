@@ -39,7 +39,8 @@ interface LandingViewProps {
   onNavigate: (tab: string) => void
   onScanQR: () => void
   onTakeTicket: () => void
-  onLogin: () => void
+  q
+  : () => void
   pendingServiceId?: string | null
   onPendingServiceConsumed?: () => void
 }
@@ -193,12 +194,7 @@ export function LandingView({
     [trackedTicketIds, tickets]
   )
 
-  // FIX : on n'autorise le nettoyage (purge des IDs qui ne sont plus actifs)
-  // qu'une fois que ticketsLoaded === true, c'est-à-dire une fois que
-  // fetchTickets() a réellement reçu une réponse de Supabase au moins une fois.
-  // Avant ce garde-fou, au refresh, `tickets` valait [] le temps d'un rendu,
-  // ce qui faisait croire à tort que le ticket suivi n'existait plus et le
-  // supprimait du localStorage — d'où la perte du suivi à chaque actualisation.
+
   useEffect(() => {
     if (!ticketsLoaded) return
     const stillActiveIds = trackedActiveTickets.map((t) => t.id)
@@ -307,7 +303,6 @@ export function LandingView({
     }
 
     onPendingServiceConsumed?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingServiceId, services, servicesWithStatus])
 
   useEffect(() => {
@@ -333,7 +328,6 @@ export function LandingView({
       setShowTicketModal(true)
     }
     window.history.replaceState({}, document.title, window.location.pathname)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, servicesWithStatus])
 
   const avgWaitTime = useMemo(() => {
@@ -458,7 +452,6 @@ export function LandingView({
 
       await fetchTickets()
 
-      // Envoyer SMS de confirmation
       await sendConfirmationSms({
         id: data.id,
         number: ticketNumber,

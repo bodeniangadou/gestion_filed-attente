@@ -1,33 +1,4 @@
-/**
- * app-context.tsx COMPLET
- *
- * Version avec :
- * ✅ Import SMS functions
- * ✅ sentSmsKeysRef pour éviter doublons (presque le tour)
- * ✅ callNextPatient() envoie SMS "c'est le tour"
- * ✅ useEffect pour "presque le tour" (position ≤ 2)
- * ✅ SMS "annulé" quand un guichet ferme et annule les tickets en attente
- * ✅ SMS "redirigé" quand un guichet ferme et redirige les tickets vers un autre guichet
- * ✅ ticketsLoaded — expose si le premier fetchTickets() est terminé, pour éviter
- *    que les composants (ex: LandingView) suppriment un ticket suivi du localStorage
- *    avant que les vraies données Supabase soient arrivées.
- * ✅ NOUVEAU — TOUT EN TEMPS RÉEL :
- *    - ticketsServed (guichet) et ticketsServedToday (agent) sont recalculés en
- *      direct à partir de `tickets`, au lieu d'être incrémentés manuellement puis
- *      écrasés à 0 par le prochain fetchCounters()/fetchAgents().
- *    - services[].currentQueue est recalculé en direct à partir de `tickets`,
- *      au lieu de dépendre d'une colonne BDD qui peut devenir périmée.
- *    - Le profil de l'agent connecté (nom, prénom, téléphone, photo) se
- *      resynchronise automatiquement si un admin le modifie pendant qu'il est
- *      connecté ; déconnexion forcée immédiate si l'agent est banni.
- *
- * ⚠️ Rappel important (côté Supabase, pas dans ce fichier) : pour que le temps
- * réel fonctionne réellement, il faut que la Replication soit activée sur les
- * tables service, guichet, utilisateur, ticket, hopital (Database → Replication
- * dans le dashboard Supabase), et que les policies RLS autorisent le SELECT sur
- * ces tables pour le rôle utilisé. Sans ça, les événements postgres_changes ne
- * seront jamais reçus côté client, même si le code ci-dessous est correct.
- */
+
 
 "use client"
 
@@ -204,17 +175,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isBusy, setIsBusy] = useState(false)
   const [currentTicket, setCurrentTicket] = useState<Ticket | null>(null)
   const [tickets, setTickets] = useState<Ticket[]>([])
-  // Passe à true dès que le premier fetchTickets() (succès OU échec) est terminé.
-  // Sert de garde pour les composants qui font du nettoyage basé sur `tickets`
-  // (ex: LandingView qui purge son localStorage) afin qu'ils ne confondent pas
-  // "pas encore chargé" avec "ticket introuvable".
   const [ticketsLoaded, setTicketsLoaded] = useState(false)
   const [services, setServices] = useState<Service[]>([])
   const [counters, setCounters] = useState<Counter[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
 
-  // Ref pour éviter d'envoyer le même SMS "presque le tour" 2x
   const sentSmsKeysRef = useRef<Set<string>>(new Set())
 
   const [user, setUser] = useState<User | null>(() => {
@@ -317,8 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTickets(finalTickets)
       }
     } finally {
-      // Même en cas d'erreur, on marque "chargé" pour ne jamais bloquer
-      // indéfiniment un composant qui attend ce flag.
+      
       setTicketsLoaded(true)
     }
   }, [])
@@ -335,8 +300,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         serviceName: g.service?.nom || "Non assigné",
         id_agent_actuel: g.id_agent_actuel,
         isActive: g.statut === "Actif",
-        // Valeur initiale à 0 : recalculée juste après par l'effet de
-        // synchronisation temps réel basé sur `tickets` (voir plus bas).
+      
         ticketsServed: 0,
       })))
     }
@@ -387,8 +351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         role: "agent" as UserRole,
         isOnline: u.disponibilite ?? true,
         est_banni: u.est_banni ?? false,
-        // Valeur initiale à 0 : recalculée juste après par l'effet de
-        // synchronisation temps réel basé sur `tickets` (voir plus bas).
+      
         ticketsServedToday: 0,
       })))
     }
@@ -416,7 +379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser({
       id: `user-${Date.now()}`,
       name: name || (role === "admin" ? "Admin" : role === "agent" ? "Agent" : "Patient"),
-      firstName: firstName || (role === "admin" ? "Super" : role === "agent" ? "Mamadou" : ""),
+      firstName: firstName || (role === "admin" ? "Super" : role === "agent" ? "inconnu" : ""),
       email: email || (role === "admin" ? "admin@hopitalmali.ml" : undefined),
       role,
     })
@@ -527,7 +490,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (error) { console.error("Erreur appel BDD:", error); await fetchTickets(); return null }
     await fetchTickets()
 
-    // Envoyer SMS "c'est le tour"
     const updatedTicket = tickets.find((t) => t.id === nextTicket.id)
     if (updatedTicket?.phone) {
       await sendCalledSms({
@@ -566,10 +528,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .update({ statut: "completed", date_fin: completedAt.toISOString() })
       .eq("id", ticketId)
     if (error) { console.error("Erreur fin service BDD:", error) }
-    // NOTE : on ne touche plus manuellement à counters/agents ici.
-    // ticketsServed / ticketsServedToday sont recalculés automatiquement
-    // par l'effet de synchronisation temps réel basé sur `tickets` juste après
-    // que fetchTickets() ci-dessous ait mis à jour l'état.
+
     await fetchTickets()
   }, [fetchTickets])
 
@@ -641,8 +600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const redirectPendingTicketsAndClose = useCallback(async (ticketIds: string[], targetCounterId: string) => {
     try {
-      // On garde une copie des tickets concernés AVANT la mise à jour,
-      // pour avoir leur téléphone/nom au moment d'envoyer le SMS.
+      
       const ticketsToNotify = tickets.filter(t => ticketIds.includes(t.id))
 
       const { error } = await supabase
@@ -654,7 +612,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await toggleCounter(false, { silent: true })
       const targetCounter = counters.find(c => c.id === targetCounterId)
 
-      // Notifie chaque patient concerné par SMS (si téléphone connu)
       for (const t of ticketsToNotify) {
         if (t.phone) {
           await sendRedirectedSms({
@@ -682,7 +639,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const cancelPendingTicketsAndClose = useCallback(async (ticketIds: string[]) => {
     try {
-      // Copie des tickets concernés AVANT annulation, pour le SMS
       const ticketsToNotify = tickets.filter(t => ticketIds.includes(t.id))
 
       if (ticketIds.length > 0) {
@@ -692,7 +648,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       await toggleCounter(false, { silent: true })
 
-      // Notifie chaque patient concerné par SMS (si téléphone connu)
       for (const t of ticketsToNotify) {
         if (t.phone) {
           await sendCancelledByStaffSms({
@@ -853,8 +808,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [loadUserProfile])
 
-  // useEffect : détecte "presque le tour" (position ≤ 2)
-  // et envoie un SMS une seule fois via sentSmsKeysRef
   useEffect(() => {
     tickets.forEach((ticket) => {
       if (ticket.statut !== "waiting" || !ticket.phone) return
@@ -879,22 +832,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [tickets])
 
-  // ────────────────────────────────────────────────────────────────────────
-  // NOUVEAU — SYNCHRONISATION TEMPS RÉEL : ticketsServed (guichet) et
-  // ticketsServedToday (agent).
-  //
-  // Avant : incrémentés à la main dans completeService(), puis écrasés à 0 au
-  // prochain fetchCounters()/fetchAgents() (déclenché par le realtime dès
-  // qu'un guichet ou un agent change) → chiffres faux la plupart du temps.
-  //
-  // Maintenant : recalculés directement depuis `tickets`, qui est lui-même
-  // toujours à jour via le channel realtime sur la table "ticket". Résultat :
-  // source unique de vérité, plus jamais de valeur périmée.
-  //
-  // Le garde "changed" évite toute boucle infinie : si rien n'a réellement
-  // changé, on renvoie la même référence de tableau (prev), ce qui ne
-  // déclenche pas de re-render ni de nouvelle exécution de cet effet.
-  // ────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -930,16 +868,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [tickets, counters, agents])
 
-  // ────────────────────────────────────────────────────────────────────────
-  // NOUVEAU — SYNCHRONISATION TEMPS RÉEL : services[].currentQueue.
-  //
-  // Avant : dépendait uniquement de la colonne "current_queue" en base, qui
-  // peut devenir périmée si elle n'est pas mise à jour par un trigger BDD à
-  // chaque changement de ticket.
-  //
-  // Maintenant : recalculé en direct depuis `tickets` (nombre de tickets
-  // "waiting" pour ce service), toujours exact.
-  // ────────────────────────────────────────────────────────────────────────
+ 
   useEffect(() => {
     setServices(prev => {
       let changed = false
@@ -952,21 +881,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [tickets, services])
 
-  // ────────────────────────────────────────────────────────────────────────
-  // NOUVEAU — SYNCHRONISATION TEMPS RÉEL DU PROFIL DE L'AGENT CONNECTÉ.
-  //
-  // `agents` se met déjà à jour en temps réel via le channel Supabase (table
-  // "utilisateur"). Mais avant, si UN administrateur modifiait le profil de
-  // l'agent actuellement connecté (nom, téléphone, photo) ou le bannissait,
-  // rien ne répercutait ce changement sur son propre `user` local : il aurait
-  // fallu qu'il se déconnecte/reconnecte pour le voir.
-  //
-  // Maintenant : dès que `agents` se met à jour et contient une version plus
-  // récente du profil de l'utilisateur connecté, on la répercute sur `user`.
-  // Et si l'agent vient d'être banni, il est déconnecté immédiatement avec
-  // un message explicite plutôt que de rester connecté avec un accès qu'il ne
-  // devrait plus avoir.
-  // ────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!user || user.role !== "agent") return
     const updatedAgent = agents.find(a => a.id === user.id)
@@ -993,7 +908,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       return prev
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agents, user?.id])
 
   return (

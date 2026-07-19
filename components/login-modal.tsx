@@ -207,10 +207,7 @@ export function LoginModal({ open, onOpenChange, onSuccess }: LoginModalProps) {
       }])
 
       if (dbError) {
-        // Rollback : le compte Auth a été créé mais son profil n'a pas pu
-        // être inséré. On supprime le compte Auth pour éviter un "compte
-        // fantôme" (email bloqué définitivement, utilisateur ne pouvant ni
-        // se connecter ni se réinscrire).
+   
         try {
           await fetch("/api/rollback-signup", {
             method: "POST",

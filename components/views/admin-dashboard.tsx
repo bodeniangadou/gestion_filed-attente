@@ -632,7 +632,6 @@ const formatRelativeTime = (dateInput: string | Date) => {
   const diffInMinutes = Math.floor(diffInSeconds / 60);
   const diffInHours = Math.floor(diffInMinutes / 60);
   
-  // 1. Moins d'une minute
   if (diffInSeconds < 60) return "à l'instant";
   
   if (diffInMinutes < 60) return `il y a ${diffInMinutes} min`;

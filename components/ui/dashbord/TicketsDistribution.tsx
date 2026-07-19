@@ -13,7 +13,6 @@ export function TicketsDistribution() {
   const { tickets, getAgentCounter } = useApp()
   const counter = getAgentCounter()
 
-  // Tickets du service de l'agent connecté
   const serviceTickets = tickets.filter((t) =>
     counter ? t.service?.id === counter.serviceId : false
   )
@@ -80,7 +79,6 @@ export function TicketsDistribution() {
           </PieChart>
         </ResponsiveContainer>
 
-        {/* Total au centre */}
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
           <span className="text-xs text-muted-foreground uppercase tracking-wider">Total</span>
           <span className="text-3xl font-bold text-foreground">{total}</span>

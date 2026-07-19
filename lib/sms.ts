@@ -1,11 +1,3 @@
-/**
- * lib/sms.ts
- * 
- * Utilitaires SMS :
- * - Normalisation des numéros Mali (+223)
- * - Appel à l'API SMS Gateway
- * - Gestion des erreurs
- */
 
 export function normalizePhoneMali(phone: string | undefined): string | null {
   if (!phone || typeof phone !== "string") return null;
@@ -13,7 +5,6 @@ export function normalizePhoneMali(phone: string | undefined): string | null {
   const cleaned = phone.trim().replace(/\D/g, "");
   if (!cleaned) return null;
   
-  // Ajouter +223 s'il ne commence pas déjà par 223 ou +223
   if (cleaned.startsWith("223")) {
     return `+${cleaned}`;
   }
@@ -21,7 +12,6 @@ export function normalizePhoneMali(phone: string | undefined): string | null {
     return cleaned;
   }
   
-  // Par défaut, ajouter +223 devant
   return `+223${cleaned}`;
 }
 
@@ -35,7 +25,6 @@ export async function sendSmsViaGateway(
       return { success: false, error: "Numéro invalide" };
     }
 
-    // Appel à ta route API Next.js
     const response = await fetch("/api/sms/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -47,8 +36,8 @@ export async function sendSmsViaGateway(
 
     const data = await response.json();
 
-    if (!response.ok) {
-      return {
+    if (!response.ok) { 
+      return { 
         success: false,
         error: data.error || "Erreur lors de l'envoi du SMS",
       };

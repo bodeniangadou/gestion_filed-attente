@@ -18,7 +18,6 @@ interface LandingScannerModalProps {
   onServiceScanned: (service: Service) => void
 }
 
-// Même logique de statut dynamique que LandingView/ServicesView, pour rester cohérent
 const checkServiceStatus = (service: Service, counters: Counter[]) => {
   if (!service?.openTime || !service?.closeTime) return false
 
@@ -37,20 +36,15 @@ const checkServiceStatus = (service: Service, counters: Counter[]) => {
   return isTimeValid && hasActiveCounter
 }
 
-// CORRIGÉ : extraction plus robuste de l'identifiant du service depuis le texte décodé
-// du QR. Gère désormais : un slash final éventuel (/scanner/{id}/), des espaces
-// invisibles en bout de chaîne, une éventuelle URL encodée, et un éventuel UUID brut
-// scanné directement (sans URL autour) — au lieu de ne gérer qu'un seul format strict.
+
 function extractServiceKey(decodedText: string): string {
   const cleaned = decodedText.trim()
 
-  // Format URL : .../scanner/{id} (avec ou sans slash final, query params, etc.)
   const match = cleaned.match(/\/scanner\/([^/?#]+)/)
   if (match) {
     return decodeURIComponent(match[1]).trim()
   }
 
-  // Format ?service=xxx ou ?scan=xxx quelque part dans le texte
   if (cleaned.includes("?")) {
     const queryPart = cleaned.split("?")[1]
     const urlParams = new URLSearchParams(queryPart)
@@ -58,7 +52,6 @@ function extractServiceKey(decodedText: string): string {
     if (fromQuery) return fromQuery.trim()
   }
 
-  // Sinon, on suppose que le QR contient directement l'identifiant brut
   return cleaned
 }
 
@@ -78,10 +71,6 @@ export function LandingScannerModal({ open, onOpenChange, onServiceScanned }: La
       }
     }
 
-    // CORRIGÉ : on n'autorise plus le scan tant que la liste des services n'est pas
-    // chargée. Avant, un scan effectué dans les toutes premières secondes (avant que
-    // fetchServices() ait fini son premier appel) tombait toujours sur "QR invalide",
-    // même avec un QR parfaitement correct, puisque `services` était encore vide.
     if (services.length === 0) {
       setIsReady(false)
       return

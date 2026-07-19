@@ -25,7 +25,6 @@ export function CountersView() {
   const [editingCounter, setEditingCounter] = useState<any>(null)
   const [agentSearch, setAgentSearch] = useState("")
 
-  // ── Recherche + filtres ──────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("")
   const [filterServiceId, setFilterServiceId] = useState("all")
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "inactive">("all")
@@ -122,7 +121,6 @@ export function CountersView() {
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
 
-      {/* ── Header ── */}
       <div className="border-b border-border bg-card px-8 py-5 shadow-sm">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div>
@@ -137,7 +135,6 @@ export function CountersView() {
 
       <div className="mx-auto max-w-5xl p-8 space-y-8">
 
-        {/* ── Stats ── */}
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-card rounded-xl border border-border p-4 flex items-center justify-between shadow-sm">
             <div>
@@ -168,7 +165,6 @@ export function CountersView() {
           </div>
         </div>
 
-        {/* ── Barre de recherche + filtres ── */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
@@ -203,7 +199,6 @@ export function CountersView() {
           </Select>
         </div>
 
-        {/* ── Grille guichets ── */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredCounters.map((counter, index) => {
             const agentName = getAgentName(counter.id_agent_actuel)
@@ -220,7 +215,6 @@ export function CountersView() {
                 }`}>
                   <CardContent className="p-5 flex flex-col gap-4">
 
-                    {/* Top row : icône + nom + menu */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-3">
                         <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${
@@ -258,7 +252,6 @@ export function CountersView() {
                       </DropdownMenu>
                     </div>
 
-                    {/* Agent */}
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent/40 border border-border/50">
                       <User className="size-3.5 text-muted-foreground shrink-0" />
                       <span className="text-xs text-foreground truncate">
@@ -269,7 +262,6 @@ export function CountersView() {
                       </span>
                     </div>
 
-                    {/* Footer : badge + toggle */}
                     <div className="flex items-center justify-between pt-1 border-t border-border/50">
                       <Badge className={`text-xs px-2.5 py-0.5 ${
                         counter.isActive
@@ -306,7 +298,6 @@ export function CountersView() {
         )}
       </div>
 
-      {/* ── Modal Édition ── */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -361,7 +352,6 @@ export function CountersView() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Modal Création ── */}
       <Dialog open={showCreateModal} onOpenChange={open => { setShowCreateModal(open); if (!open) setNewCounter({ name: "", serviceId: "", agentId: "" }) }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

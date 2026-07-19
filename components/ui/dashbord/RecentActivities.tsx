@@ -36,7 +36,6 @@ export function RecentActivities() {
 
   const counter = getAgentCounter()
 
-  // Activités du service géré par l'agent connecté, triées des plus récentes aux plus anciennes
   const activities = tickets
     .filter((t) => counter ? t.service?.id === counter.serviceId : false)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -45,7 +44,6 @@ export function RecentActivities() {
   return (
     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-6 min-h-[500px] flex flex-col">
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
 
         <div>
