@@ -1,5 +1,3 @@
-
-
 "use client"
 
 import { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from "react"
@@ -283,7 +281,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTickets(finalTickets)
       }
     } finally {
-      
       setTicketsLoaded(true)
     }
   }, [])
@@ -300,7 +297,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         serviceName: g.service?.nom || "Non assigné",
         id_agent_actuel: g.id_agent_actuel,
         isActive: g.statut === "Actif",
-      
         ticketsServed: 0,
       })))
     }
@@ -351,7 +347,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         role: "agent" as UserRole,
         isOnline: u.disponibilite ?? true,
         est_banni: u.est_banni ?? false,
-      
         ticketsServedToday: 0,
       })))
     }
@@ -600,7 +595,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const redirectPendingTicketsAndClose = useCallback(async (ticketIds: string[], targetCounterId: string) => {
     try {
-      
       const ticketsToNotify = tickets.filter(t => ticketIds.includes(t.id))
 
       const { error } = await supabase
@@ -808,28 +802,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [loadUserProfile])
 
+  // SMS "presque le tour" : envoi séquentiel (un par un, espacé de 1,5s) au
+  // lieu d'une rafale simultanée pour tous les tickets éligibles — c'est ce
+  // qui déclenchait le rate limit du gateway SMS. La vérification anti-doublon
+  // réelle se fait maintenant dans sendAlmostTurnSms via la table
+  // "notification" en base (persistante), sentSmsKeysRef ici n'est qu'une
+  // optimisation pour éviter des appels redondants dans la même session.
   useEffect(() => {
-    tickets.forEach((ticket) => {
-      if (ticket.statut !== "waiting" || !ticket.phone) return
-
-      const smsKey = `almost_turn_${ticket.id}`
-
-      if (
+    const ticketsToNotify = tickets.filter(
+      (ticket) =>
+        ticket.statut === "waiting" &&
+        ticket.phone &&
         ticket.position &&
         ticket.position <= 2 &&
-        !sentSmsKeysRef.current.has(smsKey)
-      ) {
-        sendAlmostTurnSms({
-          id: ticket.id,
-          number: ticket.number,
-          phone: ticket.phone,
-          userName: ticket.userName,
-          position: ticket.position,
-          service: ticket.service,
-        })
+        !sentSmsKeysRef.current.has(`almost_turn_${ticket.id}`)
+    )
+
+    if (ticketsToNotify.length === 0) return
+
+    let cancelled = false
+
+    const sendSequentially = async () => {
+      for (const ticket of ticketsToNotify) {
+        if (cancelled) return
+
+        const smsKey = `almost_turn_${ticket.id}`
         sentSmsKeysRef.current.add(smsKey)
+
+        try {
+          await sendAlmostTurnSms({
+            id: ticket.id,
+            number: ticket.number,
+            phone: ticket.phone!,
+            userName: ticket.userName,
+            position: ticket.position,
+            service: ticket.service,
+          })
+        } catch (err) {
+          console.error("Erreur envoi SMS presque le tour:", err)
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1500))
       }
-    })
+    }
+
+    sendSequentially()
+
+    return () => {
+      cancelled = true
+    }
   }, [tickets])
 
 
@@ -868,7 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [tickets, counters, agents])
 
- 
+
   useEffect(() => {
     setServices(prev => {
       let changed = false
