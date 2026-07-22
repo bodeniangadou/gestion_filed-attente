@@ -1,4 +1,3 @@
-
 import { supabase } from "@/lib/supabase"
 import { sendSmsViaGateway } from "@/lib/sms"
 
@@ -53,6 +52,26 @@ export async function sendAlmostTurnSms(ticket: {
 }): Promise<boolean> {
   try {
     if (!ticket.position || ticket.position > 2) return false
+
+    // Vérification en base AVANT d'envoyer : c'est la vraie source de vérité,
+    // contrairement à un Set en mémoire (useRef) qui se vide à chaque reload
+    // de page ou redémarrage du serveur. Sans ça, un ticket qui avait déjà
+    // reçu son SMS "presque le tour" se voit renvoyer un nouveau SMS après
+    // chaque redémarrage/rechargement, tant qu'il reste en position 1 ou 2.
+    const { data: existing, error: checkError } = await supabase
+      .from("notification")
+      .select("id")
+      .eq("id_ticket", ticket.id)
+      .like("message", "[SMS_ALMOST_TURN]%")
+      .maybeSingle()
+
+    if (checkError) {
+      console.error("Erreur vérification notification existante:", checkError)
+    }
+    if (existing) {
+      // Déjà envoyé pour ce ticket, on ne renvoie pas un deuxième SMS.
+      return false
+    }
 
     const serviceName = ticket.service?.name || "Service"
     const message = `${ticket.userName}, préparez-vous ! Vous serez appelé(e) très bientôt. Ticket ${ticket.number} - ${serviceName}. Hôpital du Mali.`

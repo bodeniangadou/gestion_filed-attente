@@ -29,19 +29,16 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
 }) => {
   const prevStatutRef = useRef<string | undefined>(undefined)
 
-  // --- Alerte vibration + son quand le ticket passe à "called" ---
   useEffect(() => {
     if (!ticket) return
     const prev = prevStatutRef.current
     const nowCalled = ticket.statut === "called"
 
     if (nowCalled && prev !== "called") {
-      // Vibration (Android/Chrome uniquement — iOS Safari l'ignore, c'est normal)
       if (typeof navigator !== "undefined" && "vibrate" in navigator) {
         navigator.vibrate([300, 150, 300, 150, 300])
       }
 
-      // Bip sonore généré en JS (pas de fichier externe requis)
       try {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
         const ctx = new AudioCtx()
@@ -74,7 +71,7 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
   const isCompleted = ticket.statut === "completed"
   const isAbsent = ticket.statut === "absent"
   const isCancelled = ticket.statut === "cancelled"
-  const isClosed = isCompleted || isCancelled // ticket définitivement clos
+  const isClosed = isCompleted || isCancelled 
 
   const guichet = ticket.counterName || "Guichet à confirmer"
   const displayPhone = ticket.phoneNumber || "+223 XX XX XX XX"
@@ -88,7 +85,6 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
         ? Math.max(5, Math.min(95, Math.round(((ticket.totalInQueue - (ticket.queuePos || 1) + 1) / ticket.totalInQueue) * 100)))
         : Math.max(15, Math.min(95, 100 - (ticket.queuePos || 1) * 10))
 
-  // --- Message + badge selon statut ---
   let badgeText = "Ticket Actif & Validé"
   let badgeIcon = <CheckCircle2 className="size-4" />
   let badgeClass = "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"

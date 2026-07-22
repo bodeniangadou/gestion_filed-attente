@@ -30,7 +30,6 @@ export default function PatientPage() {
   
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
 
-  // Met à jour automatiquement le ticket sélectionné si la liste change en temps réel
   useEffect(() => {
     if (activeTickets.length > 0 && !selectedTicketId) {
       setSelectedTicketId(activeTickets[0].id)
@@ -42,7 +41,6 @@ export default function PatientPage() {
   const selectedTicket = activeTickets.find(t => t.id === selectedTicketId) || activeTickets[0] || null
   const completedTickets = history.filter(t => t.statut === "completed")
 
-  // Historique trié du plus récent au plus ancien
   const sortedHistory = [...history].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )
@@ -89,11 +87,9 @@ export default function PatientPage() {
     return `Guichet ${name}`
   }
 
-  // Action d'annulation asynchrone pour la persistance BDD
   const handleCancelTicket = async (ticketId: string) => {
     try {
       await cancelTicket(ticketId)
-      // L'état local se mettra à jour automatiquement via le context temps réel
     } catch (error) {
       console.error("Erreur lors de l'annulation du ticket en BDD:", error)
     }
@@ -101,7 +97,6 @@ export default function PatientPage() {
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* Header */}
       <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4">
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div>
@@ -126,7 +121,6 @@ export default function PatientPage() {
       </div>
 
       <div className="mx-auto max-w-4xl p-6">
-        {/* Ticket Actif */}
         {activeTickets.length > 0 && selectedTicket && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <Card className="overflow-hidden border-0 shadow-xl">
@@ -244,7 +238,6 @@ export default function PatientPage() {
           </motion.div>
         )}
 
-        {/* Aucun ticket actif */}
         {activeTickets.length === 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
             <Card className="border-dashed border-2 bg-accent/20 border-muted-foreground/20">
@@ -261,7 +254,6 @@ export default function PatientPage() {
           </motion.div>
         )}
 
-        {/* Multi-tickets */}
         {activeTickets.length > 1 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-6">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Vos autres files d'attente actives</h3>
@@ -283,14 +275,12 @@ export default function PatientPage() {
           </motion.div>
         )}
 
-        {/* Statistiques Rapides */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="mb-6 grid grid-cols-3 gap-4">
           <Card className="border-0 shadow-sm bg-card"><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-emerald">{activeTickets.length}</p><p className="text-xs text-muted-foreground">En cours</p></CardContent></Card>
           <Card className="border-0 shadow-sm bg-card"><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{completedTickets.length}</p><p className="text-xs text-muted-foreground">Terminés</p></CardContent></Card>
           <Card className="border-0 shadow-sm bg-card"><CardContent className="p-4 text-center"><p className="text-2xl font-bold text-foreground">{history.length}</p><p className="text-xs text-muted-foreground">Total visites</p></CardContent></Card>
         </motion.div>
 
-        {/* Historique */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
           <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between py-4">
@@ -324,7 +314,6 @@ export default function PatientPage() {
           </Card>
         </motion.div>
 
-        {/* Actions Rapides */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="mt-6 grid grid-cols-2 gap-4">
           <Button 
             variant="outline" 

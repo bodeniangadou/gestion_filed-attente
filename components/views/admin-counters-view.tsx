@@ -142,7 +142,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
     })
   }
 
-  // Group counters by service
   const countersByService = services.map(service => ({
     service,
     counters: filteredCounters.filter(c => c.serviceId === service.id)
@@ -150,7 +149,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
-      {/* Header */}
       <div className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60 px-6 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-4">
@@ -198,7 +196,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
           </Select>
         </div>
 
-        {/* Counters by Service */}
         <div className="space-y-8">
           {countersByService.map(({ service, counters: serviceCounters }) => (
             <div key={service.id}>
@@ -267,7 +264,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                           </DropdownMenu>
                         </div>
 
-                        {/* Agent Info */}
                         <div className={`p-3 rounded-xl mb-4 ${counter.agentId ? "bg-primary/5 border border-primary/20" : "bg-accent/50"}`}>
                           {counter.agentId ? (
                             <div className="flex items-center gap-2">
@@ -287,13 +283,11 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                           )}
                         </div>
 
-                        {/* Stats */}
                         <div className="flex items-center justify-between text-sm mb-4">
                           <span className="text-muted-foreground">Tickets servis</span>
                           <span className="font-semibold text-foreground">{counter.ticketsServed}</span>
                         </div>
 
-                        {/* Toggle */}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             {counter.isActive ? (
@@ -316,7 +310,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                   </motion.div>
                 ))}
 
-                {/* Add Counter Card */}
                 <motion.button
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -343,7 +336,6 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
         )}
       </div>
 
-      {/* Create/Edit Modal */}
       <Dialog 
         open={showCreateModal || !!editingCounter} 
         onOpenChange={(open) => {

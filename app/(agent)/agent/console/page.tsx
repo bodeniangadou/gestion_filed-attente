@@ -155,9 +155,7 @@ export default function Page() {
     }
   };
 
-  // Rappeler : relance l'annonce vocale locale ET renvoie le SMS
-  // "c'est votre tour" au patient (utile s'il ne s'est pas présenté
-  // ou n'a pas vu le premier SMS).
+  
   const rappeler = async () => {
     if (!patientActuel || actionLoading) return;
     setActionLoading(true);

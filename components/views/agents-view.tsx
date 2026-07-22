@@ -100,9 +100,6 @@ export function AgentsView() {
 
     const toastId = toast.loading("Création du compte en cours...")
 
-    // Récupération du token de session admin pour authentifier l'appel
-    // vers /api/create-agent, qui exige désormais une vérification de rôle
-    // côté serveur avant de créer un compte agent.
     const { data: { session } } = await supabase.auth.getSession()
 
     if (!session?.access_token) {

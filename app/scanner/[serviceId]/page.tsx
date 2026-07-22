@@ -9,19 +9,13 @@ export default function ScannerRedirect() {
   const router = useRouter()
   const { user, isLoading } = useApp()
 
-  // useParams peut renvoyer un tableau si la route a plusieurs segments dynamiques —
-  // ici on s'assure d'avoir bien une simple chaîne de caractères
+
   const serviceId = Array.isArray(params.serviceId) ? params.serviceId[0] : params.serviceId
 
   useEffect(() => {
     if (!serviceId) return
 
-    // CORRIGÉ : on attend que le chargement de la session (loadUserProfile dans le
-    // context) soit terminé avant de décider de la redirection. Sans cette attente,
-    // un patient connecté qui scanne le QR avec l'appareil photo natif de son téléphone
-    // (donc un chargement à froid de la page) pouvait être envoyé par erreur vers la
-    // landing page anonyme, simplement parce que `user` n'avait pas encore eu le temps
-    // de se peupler au moment du premier rendu.
+ 
     if (isLoading) return
 
     if (user) {

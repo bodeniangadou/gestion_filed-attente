@@ -16,19 +16,11 @@ import { toast } from "sonner"
 import { useApp, Service, Ticket } from "@/lib/app-context"
 import { sendConfirmationSms } from "@/lib/sms-confirmation"
 
-// FORMAT : {Préfixe}{numéro padStart 3}
-// ex: C001, C047, C124
-// Le préfixe = 1ère lettre du nom du service (sans accent, majuscule)
-// Le numéro = compteur du JOUR pour ce service (tous statuts confondus)
-// CORRIGÉ : repart à 001 chaque jour, aligné sur la logique de LandingView.tsx
-// (avant : comptage historique global, le numéro ne redémarrait jamais)
+
 function generateTicketCode(servicePrefix: string, todayCount: number): string {
   return `${servicePrefix.toUpperCase()}${String(todayCount).padStart(3, "0")}`
 }
 
-// NOUVEAU : compte les tickets du jour pour ce service dans Supabase
-// Reset automatique chaque jour — on ne compte que ceux créés aujourd'hui,
-// peu importe leur statut (waiting/called/serving/completed/absent/cancelled)
 async function getTodayTicketCount(serviceId: string): Promise<number> {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -121,8 +113,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
   const [localTakenServices, setLocalTakenServices] = useState<string[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Guard anti-toast : on mémorise le serviceId déjà traité pour ne pas
-  // relancer handleTakeTicket à chaque retour sur la page (remontage du composant)
+
   const handledScanParam = useRef<string | null>(null)
 
   const filteredServices = services.filter(service =>
@@ -172,7 +163,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
     if (!isAdmin && isRealPatient) {
       try {
-        // Vérification doublon patient connecté
         const { data: existingActiveTickets, error: checkError } = await supabase
           .from("ticket")
           .select("id")
@@ -187,9 +177,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           toast.error("Demande refusée", { description: "Un ticket actif existe déjà sur le serveur." })
           return
         }
-
-        // CORRIGÉ : comptage du jour seulement (aligné sur LandingView.tsx)
-        // → le numéro repart à 001 chaque jour, tous statuts confondus
         const todayCount = await getTodayTicketCount(service.id)
 
         const servicePrefix = service.name
@@ -198,8 +185,7 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
           .substring(0, 1)
           .toUpperCase()
 
-        // position = rang dans la file active (waiting uniquement)
-        // distinct du numéro de ticket qui est basé sur le compteur du jour
+       
         const currentPosition = calculateQueue(service.id, tickets) + 1
         const ticketNumber = generateTicketCode(servicePrefix, todayCount + 1)
 
@@ -222,7 +208,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
 
         await fetchTickets()
 
-        // 🎯 NOUVEAU : Envoyer SMS de confirmation
         if (user.phone) {
           await sendConfirmationSms({
             id: data.id,
@@ -259,7 +244,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
     const fullFormName = `${formData.prenom} ${formData.nom}`.trim()
 
     try {
-      // Vérification doublon par nom — cohérente avec LandingView
       const { data: existingByName, error: e1 } = await supabase
         .from("ticket")
         .select("id")
@@ -276,7 +260,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         return
       }
 
-      // CORRIGÉ : comptage du jour seulement (aligné sur LandingView.tsx et handleTakeTicket)
       const todayCount = await getTodayTicketCount(selectedService.id)
 
       const servicePrefix = selectedService.name
@@ -285,7 +268,6 @@ export default function ServicesView({ isAdmin = false }: ServicesViewProps) {
         .substring(0, 1)
         .toUpperCase()
 
-      // position = file active (waiting) distincte du numéro basé sur le jour
       const currentPosition = calculateQueue(selectedService.id, tickets) + 1
       const ticketNumber = generateTicketCode(servicePrefix, todayCount + 1)
 

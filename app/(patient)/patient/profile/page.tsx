@@ -21,10 +21,6 @@ import { FieldLabel } from "@/components/ui/field"
 import { useApp } from "@/lib/app-context"
 import Link from "next/link"
 
-// CORRIGÉ : logique de split nom/prénom unifiée
-// "Aminata Diallo" → firstName: "Aminata", name: "Diallo"
-// "Aminata Bah Diallo" → firstName: "Aminata Bah", name: "Diallo"
-// "Aminata" → firstName: "Aminata", name: ""
 function splitFullName(nom: string): { firstName: string; name: string } {
   const parts = (nom || "").trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return { firstName: "", name: "" }
@@ -44,8 +40,7 @@ export default function ProfileView() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 useEffect(() => {
   if (user) {
-    // On reconstruit le nom complet depuis le context (qui split au premier mot)
-    // puis on re-split selon notre logique : dernier mot = nom, tout le reste = prénom
+    
     const fullName = [user.firstName, user.name].filter(Boolean).join(" ")
     const { firstName, name } = splitFullName(fullName)
     setFormData({
@@ -171,7 +166,6 @@ useEffect(() => {
   }
 
   return (
-    // CORRIGÉ : plus de double centrage — s'étale dans l'espace dispo après la sidebar
     <div className="min-h-screen bg-background px-4 py-8 lg:px-8">
       <div className="mx-auto max-w-2xl">
 

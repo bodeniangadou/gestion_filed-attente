@@ -39,11 +39,10 @@ interface LandingViewProps {
   onNavigate: (tab: string) => void
   onScanQR: () => void
   onTakeTicket: () => void
-  onLogin: () => void
+  onLogin: (mode?: "login" | "register") => void
   pendingServiceId?: string | null
   onPendingServiceConsumed?: () => void
 }
-
 const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
   const LucideIcon = (LucideIcons as any)[name] || LucideIcons.Building2
   return <LucideIcon className={className} />
@@ -193,12 +192,7 @@ export function LandingView({
     [trackedTicketIds, tickets]
   )
 
-  // FIX : on n'autorise le nettoyage (purge des IDs qui ne sont plus actifs)
-  // qu'une fois que ticketsLoaded === true, c'est-à-dire une fois que
-  // fetchTickets() a réellement reçu une réponse de Supabase au moins une fois.
-  // Avant ce garde-fou, au refresh, `tickets` valait [] le temps d'un rendu,
-  // ce qui faisait croire à tort que le ticket suivi n'existait plus et le
-  // supprimait du localStorage — d'où la perte du suivi à chaque actualisation.
+
   useEffect(() => {
     if (!ticketsLoaded) return
     const stillActiveIds = trackedActiveTickets.map((t) => t.id)
@@ -307,7 +301,6 @@ export function LandingView({
     }
 
     onPendingServiceConsumed?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingServiceId, services, servicesWithStatus])
 
   useEffect(() => {
@@ -333,7 +326,6 @@ export function LandingView({
       setShowTicketModal(true)
     }
     window.history.replaceState({}, document.title, window.location.pathname)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, servicesWithStatus])
 
   const avgWaitTime = useMemo(() => {
@@ -458,7 +450,6 @@ export function LandingView({
 
       await fetchTickets()
 
-      // Envoyer SMS de confirmation
       await sendConfirmationSms({
         id: data.id,
         number: ticketNumber,
@@ -550,8 +541,9 @@ export function LandingView({
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" onClick={onLogin} className="gap-2 text-sm font-medium"><LogIn className="size-4" /> Connexion</Button>
-            <Button onClick={onLogin} className="gap-2 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>
+   <Button variant="ghost" onClick={() => onLogin("login")} className="gap-2 text-sm font-medium"><LogIn className="size-4" /> Connexion</Button>
+<Button onClick={() => onLogin("register")} className="gap-2 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>
+
           </div>
 
           <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="flex md:hidden items-center justify-center size-10 rounded-xl hover:bg-muted transition-colors">
@@ -572,8 +564,8 @@ export function LandingView({
                 <QrCode className="size-5 text-primary" /> Scanner QR Code
               </button>
               <div className="border-t border-border my-2" />
-              <Button variant="outline" onClick={() => { onLogin(); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><LogIn className="size-4" /> Connexion</Button>
-              <Button onClick={() => { onLogin(); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>
+<Button variant="outline" onClick={() => { onLogin("login"); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><LogIn className="size-4" /> Connexion</Button>
+<Button onClick={() => { onLogin("register"); setMobileMenuOpen(false) }} className="w-full gap-2 justify-center h-12 rounded-xl"><UserPlus className="size-4" /> Inscription</Button>     
             </div>
           </motion.div>
         )}

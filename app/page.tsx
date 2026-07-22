@@ -1,3 +1,5 @@
+
+
 "use client"
 
 import { useState } from "react"
@@ -10,9 +12,9 @@ import { Service } from "@/lib/app-context"
 export default function HomePage() {
   const router = useRouter()
   const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [loginMode, setLoginMode] = useState<"login" | "register">("login")
   const [isScannerOpen, setIsScannerOpen] = useState(false)
-  // NOUVEAU : au lieu de router.push, on passe l'id directement comme prop React
-  // pour que LandingView réagisse instantanément via useEffect
+
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
 
   const handleTakeTicket = () => {
@@ -28,13 +30,12 @@ export default function HomePage() {
     setIsScannerOpen(true)
   }
 
-  const handleLogin = () => {
+  const handleLogin = (mode: "login" | "register" = "login") => {
+    setLoginMode(mode)
     setIsLoginOpen(true)
   }
 
   const handleServiceScanned = (service: Service) => {
-    // CORRIGÉ : on ne fait plus router.push (qui ne retrigger pas le useEffect)
-    // on passe l'id comme état React — LandingView le surveille et ouvre le modal
     setIsScannerOpen(false)
     setPendingServiceId(service.id)
   }
@@ -53,6 +54,7 @@ export default function HomePage() {
       <LoginModal
         open={isLoginOpen}
         onOpenChange={setIsLoginOpen}
+        defaultMode={loginMode}
         onSuccess={() => {
           console.log("Utilisateur connecté avec succès !")
         }}

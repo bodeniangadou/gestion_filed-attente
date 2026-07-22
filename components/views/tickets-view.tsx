@@ -16,7 +16,6 @@ export function TicketsView() {
   const [progress, setProgress] = useState(0)
   const router = useRouter()
 
-  // Simulation de la barre de progression — branchée sur le statut réel du ticket actif
   useEffect(() => {
     if (currentTicket && currentTicket.statut === "waiting") {
       const total = Math.max(currentTicket.totalInQueue || 1, 1)
@@ -24,7 +23,7 @@ export function TicketsView() {
       const targetProgress = ((total - pos) / total) * 100
 
       const timer = setTimeout(() => {
-        setProgress(Math.max(0, Math.min(targetProgress, 95))) // Max 95% tant que ce n'est pas appelé
+        setProgress(Math.max(0, Math.min(targetProgress, 95))) 
       }, 500)
       return () => clearTimeout(timer)
     } else if (currentTicket && (currentTicket.statut === "called" || currentTicket.statut === "serving")) {
@@ -34,7 +33,6 @@ export function TicketsView() {
     }
   }, [currentTicket])
 
-  // Configuration des statuts — alignée sur les valeurs normalisées du context
   const statusConfig: Record<string, { label: string, color: string, textColor: string }> = {
     "waiting": { label: "En attente", color: "bg-amber-500", textColor: "text-amber-500" },
     "called": { label: "Appelé", color: "bg-emerald", textColor: "text-emerald" },
@@ -48,21 +46,18 @@ export function TicketsView() {
     return statusConfig[statut] || { label: statut || "Inconnu", color: "bg-gray-500", textColor: "text-gray-500" }
   }
 
-  // Fonction pour un temps d'attente plus "humain" et pro
   const getEstimatedTime = (position: number) => {
     if (position <= 1) return "Moins de 5 minutes"
     if (position === 2) return "Environ 10 minutes"
     return `Environ ${position * 5} minutes`
   }
 
-  // Historique propre à l'utilisateur connecté uniquement (pas tous les tickets de l'hôpital)
   const pastTickets = tickets.filter(
     (t) =>
       t.userId === user?.id &&
       (t.statut === "completed" || t.statut === "absent" || t.statut === "cancelled")
   )
 
-  // Formater le nom du guichet intelligemment
   const formatCounterName = (name: string) => {
     if (!name) return ""
     if (name.toLowerCase().includes("guichet")) {

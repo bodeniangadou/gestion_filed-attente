@@ -24,14 +24,9 @@ interface SmsGatewayResponse {
   [key: string]: any;
 }
 
-// Rate limiting simple en mémoire : IP -> timestamp du dernier envoi.
-// NOTE : ceci fonctionne correctement sur un serveur mono-instance.
-// Sur un déploiement multi-instance, chaque instance a sa propre mémoire
-// et ce compteur n'est pas partagé. Pour un rate-limit fiable à grande
-// échelle, il faudrait une table Supabase dédiée ou un service comme
-// Upstash Redis.
+
 const lastSmsSentByIp = new Map<string, number>();
-const MIN_DELAY_MS = 5_000; // 5 secondes entre deux SMS pour la même IP
+const MIN_DELAY_MS = 5_000; 
 
 function getClientIp(request: NextRequest): string {
   const forwarded = request.headers.get("x-forwarded-for");
@@ -41,7 +36,6 @@ function getClientIp(request: NextRequest): string {
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate limiting par IP
     const ip = getClientIp(request);
     const now = Date.now();
     const lastSent = lastSmsSentByIp.get(ip) ?? 0;
@@ -53,7 +47,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Vérification des credentials
     const SMS_GATEWAY_URL = process.env.SMS_GATEWAY_URL;
     const SMS_GATEWAY_USERNAME = process.env.SMS_GATEWAY_USERNAME;
     const SMS_GATEWAY_PASSWORD = process.env.SMS_GATEWAY_PASSWORD;
@@ -66,7 +59,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Parsing de la requête
     const body: SmsRequest = await request.json();
     const { phone, message } = body;
 
@@ -77,11 +69,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. On marque l'envoi AVANT l'appel réseau pour éviter un double
-    // envoi si deux requêtes partent presque en même temps depuis la même IP.
+ 
     lastSmsSentByIp.set(ip, now);
 
-    // 5. Préparation de l'authentification (Basic Auth) vers la passerelle
     const credentials = Buffer.from(
       `${SMS_GATEWAY_USERNAME}:${SMS_GATEWAY_PASSWORD}`
     ).toString("base64");

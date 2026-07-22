@@ -22,13 +22,11 @@ export function DailyEvolution() {
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Tickets du service de l'agent, pris aujourd'hui uniquement
     const todayServiceTickets = tickets.filter((t) => {
       if (!counter || t.service?.id !== counter.serviceId) return false
       return new Date(t.createdAt) >= today
     })
 
-    // Heures de service : 08h à 18h (ajuste si ton hôpital a d'autres horaires)
     const startHour = 8
     const endHour = 18
     const hourBuckets: { heure: string; tickets: number }[] = []
