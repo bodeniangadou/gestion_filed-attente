@@ -943,11 +943,11 @@ const openCounters = counters.filter(c => c.isActive).length;
               <CardContent>
                 <div className="space-y-2">
                   {services.sort((a, b) => {
-    const totalA = periodTickets.filter(t => t.service?.id === a.id).length;
-    const totalB = periodTickets.filter(t => t.service?.id === b.id).length;
-    return totalB - totalA; 
-}).slice(0, 5).map(service => {
-const activeCountersCount = counters.filter(c => String(c.serviceId) === String(service.id)).length
+                      const totalA = periodTickets.filter(t => t.service?.id === a.id).length;
+                      const totalB = periodTickets.filter(t => t.service?.id === b.id).length;
+                      return totalB - totalA; 
+                  }).slice(0, 5).map(service => {
+                    const activeCountersCount = counters.filter(c => String(c.serviceId) === String(service.id)).length
                     const queueCount = periodTickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length
                     const totalForSvc = periodTickets.filter(t => t.service?.id === service.id).length
                     return (

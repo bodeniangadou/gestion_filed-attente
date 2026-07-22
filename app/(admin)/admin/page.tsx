@@ -13,10 +13,10 @@ export default function AdminMainPage() {
 
   switch (currentTab) {
     case "dashboard":
-      return <AdminDashboard onNavigate={setCurrentTab} />
+      return <AdminDashboard/>
 
     case "admin-services":
-      return <AdminServicesView onBack={handleBack} />
+      return <AdminServicesView/>
 
     case "admin-counters":
       return (
@@ -48,6 +48,6 @@ export default function AdminMainPage() {
       )
 
     default:
-      return <AdminDashboard onNavigate={setCurrentTab} />
+      return <AdminDashboard />
   }
 }
