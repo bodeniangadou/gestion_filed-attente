@@ -1,41 +1,31 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useApp } from "@/lib/app-context"
 
 export default function ScannerExternalRedirect() {
   const params = useParams()
   const router = useRouter()
-  const { user, isLoading } = useApp()
-  const [isReady, setIsReady] = useState(false)
+  const { user } = useApp()
 
   const rawServiceId = params?.serviceId
   const serviceId = Array.isArray(rawServiceId) ? rawServiceId[0] : rawServiceId
 
-  // 1. Attendre un court instant pour s'assurer que le client Next.js est totalement hydraté
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true)
-    }, 400) // 400ms de sécurité
-    return () => clearTimeout(timer)
-  }, [])
-
-  // 2. Déclencher la redirection uniquement quand l'app et le serviceId sont prêts
-  useEffect(() => {
-    if (!isReady || isLoading || !serviceId) return
+    if (!serviceId) return
 
     const targetUrl = user
       ? `/patient/services?service=${encodeURIComponent(serviceId)}`
       : `/?service=${encodeURIComponent(serviceId)}`
 
-    // Navigation de secours si Next Router n'est pas encore prêt suite au scan externe
     try {
       router.replace(targetUrl)
     } catch {
       window.location.href = targetUrl
     }
-  }, [isReady, isLoading, serviceId, user, router])
+  }, [serviceId, user, router])
+  
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-6 text-center">
