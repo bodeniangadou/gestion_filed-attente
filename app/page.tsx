@@ -1,9 +1,7 @@
-
-
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { LandingView } from "@/components/views/landing-view"
 import { LoginModal } from "@/components/login-modal"
 import { LandingScannerModal } from "@/components/views/LandingScannerModal"
@@ -11,11 +9,21 @@ import { Service } from "@/lib/app-context"
 
 export default function HomePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  
   const [isLoginOpen, setIsLoginOpen] = useState(false)
   const [loginMode, setLoginMode] = useState<"login" | "register">("login")
   const [isScannerOpen, setIsScannerOpen] = useState(false)
 
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
+
+  // 1. Intercepter le serviceId depuis l'URL quand on arrive de l'extérieur (ex: /?service=UUID)
+  useEffect(() => {
+    const serviceFromUrl = searchParams.get("service")
+    if (serviceFromUrl) {
+      setPendingServiceId(serviceFromUrl)
+    }
+  }, [searchParams])
 
   const handleTakeTicket = () => {
     const element = document.getElementById("services-section")
