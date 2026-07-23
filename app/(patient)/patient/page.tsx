@@ -29,6 +29,14 @@ export default function PatientPage() {
   const history = getPatientHistory()
   
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [greeting, setGreeting] = useState("Bonjour")
+
+  useEffect(() => {
+    const h = new Date().getHours()
+    setGreeting(h >= 18 || h < 5 ? "Bonsoir" : "Bonjour")
+  }, [])
+
+  const patientName = user?.firstName?.trim() || (user?.name && user.name.toLowerCase() !== "patient" ? user.name.trim().split(/\s+/)[0] : "")
 
   useEffect(() => {
     if (activeTickets.length > 0 && !selectedTicketId) {
@@ -101,7 +109,7 @@ export default function PatientPage() {
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-foreground">
-              Bonjour, {user?.firstName || "Patient"}
+              {greeting}{patientName ? `, ${patientName}` : ""}
             </h1>
             <p className="text-sm text-muted-foreground">
               {activeTickets.length > 0 

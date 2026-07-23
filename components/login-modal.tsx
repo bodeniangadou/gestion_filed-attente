@@ -40,6 +40,7 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login" }: LoginModalProps) {
+  const { setUser } = useApp()
   const [mode, setMode] = useState<AuthMode>(defaultMode)
   // entryMode garde en mémoire COMMENT la modal a été ouverte (depuis le bouton
   // "Connexion" ou depuis le bouton "Inscription" de la navbar). Contrairement à
@@ -102,7 +103,7 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
     
     const { data: profile, error: profileError } = await supabase
       .from("utilisateur")
-      .select("role, est_banni")
+      .select("id, nom, role, est_banni, telephone, email, photo_url")
       .eq("id", data.user.id)
       .single()
 
@@ -161,7 +162,21 @@ export function LoginModal({ open, onOpenChange, onSuccess, defaultMode = "login
       }
     }
 
-    
+    const fullNom = profile.nom || data.user.user_metadata?.nom || ""
+    const parts = fullNom.trim().split(/\s+/).filter(Boolean)
+    const derivedFirstName = parts.length > 1 ? parts.slice(0, -1).join(" ") : parts[0] || ""
+    const derivedLastName = parts.length > 1 ? parts[parts.length - 1] : ""
+
+    setUser({
+      id: data.user.id,
+      name: derivedLastName || fullNom,
+      firstName: derivedFirstName || fullNom,
+      email: profile.email || data.user.email || undefined,
+      phone: profile.telephone || undefined,
+      photo: profile.photo_url || undefined,
+      role: role as UserRole,
+    })
+
     setIsLoading(false)
     handleClose()
     onSuccess()

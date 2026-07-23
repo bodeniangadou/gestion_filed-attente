@@ -35,6 +35,14 @@ export function PatientDashboard({ onNavigate, onTakeTicket }: PatientDashboardP
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(
     activeTickets.length > 0 ? activeTickets[0] : null
   )
+  const [greeting, setGreeting] = useState("Bonjour")
+
+  useEffect(() => {
+    const h = new Date().getHours()
+    setGreeting(h >= 18 || h < 5 ? "Bonsoir" : "Bonjour")
+  }, [])
+
+  const patientName = user?.firstName?.trim() || (user?.name && user.name.toLowerCase() !== "patient" ? user.name.trim().split(/\s+/)[0] : "")
 
   const completedTickets = history.filter(t => t.status === "completed")
   const cancelledTickets = history.filter(t => t.status === "cancelled" || t.status === "absent")
@@ -69,9 +77,14 @@ export function PatientDashboard({ onNavigate, onTakeTicket }: PatientDashboardP
 
   const formatWaitTime = (createdAt: Date) => {
     const minutes = Math.round((Date.now() - new Date(createdAt).getTime()) / 60000)
+    if (minutes < 0) return "A l'instant"
     if (minutes < 60) return `${minutes} min`
     const hours = Math.floor(minutes / 60)
     return `${hours}h ${minutes % 60}min`
+  }
+
+  const handleCancelTicket = (ticketId: string) => {
+    cancelTicket(ticketId)
   }
 
   return (
@@ -81,7 +94,7 @@ export function PatientDashboard({ onNavigate, onTakeTicket }: PatientDashboardP
         <div className="mx-auto flex max-w-4xl items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-foreground">
-              Bonjour, {user?.firstName || "Patient"}
+              {greeting}{patientName ? `, ${patientName}` : ""}
             </h1>
             <p className="text-sm text-muted-foreground">
               {activeTickets.length > 0 
