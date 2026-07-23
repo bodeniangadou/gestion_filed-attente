@@ -7,7 +7,7 @@ import { LoginModal } from "@/components/login-modal"
 import { LandingScannerModal } from "@/components/views/LandingScannerModal"
 import { Service } from "@/lib/app-context"
 
-// Composant interne qui gère la logique de la page et `useSearchParams`
+// 1. On déplace toute ta logique dans un composant enfant
 function HomePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -18,7 +18,6 @@ function HomePageContent() {
 
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
 
-  // Intercepter le serviceId depuis l'URL (ex: /?service=UUID)
   useEffect(() => {
     const serviceFromUrl = searchParams.get("service")
     if (serviceFromUrl) {
@@ -78,7 +77,7 @@ function HomePageContent() {
   )
 }
 
-// Export par défaut entouré du composant Suspense pour satisfaire Next.js
+// 2. L'export principal enveloppe le composant dans Suspense
 export default function HomePage() {
   return (
     <Suspense fallback={
