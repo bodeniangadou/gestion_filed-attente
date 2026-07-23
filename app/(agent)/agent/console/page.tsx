@@ -155,12 +155,17 @@ export default function Page() {
     }
   };
 
-  
+  // ✅ FIX : on vérifie maintenant le booléen renvoyé par recallPatient.
+  // Si l'écriture en base a échoué, on ne renvoie pas de SMS et on ne
+  // fait pas croire à l'agent que le rappel a fonctionné (un toast
+  // d'erreur est déjà déclenché côté app-context).
   const rappeler = async () => {
     if (!patientActuel || actionLoading) return;
     setActionLoading(true);
     try {
-      await recallPatient(patientActuel.id);
+      const ok = await recallPatient(patientActuel.id);
+      if (!ok) return;
+
       setAnnonceKey((k) => k + 1);
       annoncerPatient(patientActuel);
 
@@ -185,13 +190,20 @@ export default function Page() {
     }
   };
 
+  // ✅ FIX : idem, on vérifie le retour de markAbsent avant de vider
+  // patientActuel et d'envoyer le SMS. Avant ce fix, si l'écriture Supabase
+  // échouait, le patient disparaissait quand même de l'écran de l'agent
+  // alors qu'il restait "en cours" côté base — c'était la cause probable
+  // du bouton "Absent" qui "ne marchait pas toujours".
   const marquerAbsent = async () => {
     if (!patientActuel || actionLoading) return;
     if (confirm(`Absent·e : ${patientActuel.userName} ?`)) {
       setActionLoading(true);
       try {
         const patientAvantReset = patientActuel;
-        await markAbsent(patientAvantReset.id);
+        const ok = await markAbsent(patientAvantReset.id);
+        if (!ok) return;
+
         setPatientActuel(null);
         setConsultationActive(false);
         setDebutConsultation(null);
@@ -215,12 +227,15 @@ export default function Page() {
     }
   };
 
+  // ✅ FIX : même logique pour "Terminer".
   const terminerConsultation = async () => {
     if (!patientActuel || !consultationActive || actionLoading) return;
     setActionLoading(true);
     try {
       const patientAvantReset = patientActuel;
-      await completeService(patientAvantReset.id);
+      const ok = await completeService(patientAvantReset.id);
+      if (!ok) return;
+
       setPatientActuel(null);
       setConsultationActive(false);
       setDebutConsultation(null);

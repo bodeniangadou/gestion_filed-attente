@@ -1,5 +1,4 @@
 import { supabase } from "@/lib/supabase"
-import { sendSmsViaGateway } from "@/lib/sms"
 
 export async function sendConfirmationSms(ticket: {
   id: string
@@ -38,63 +37,6 @@ export async function sendConfirmationSms(ticket: {
     return true
   } catch (err) {
     console.error("Erreur sendConfirmationSms:", err)
-    return false
-  }
-}
-
-export async function sendAlmostTurnSms(ticket: {
-  id: string
-  number: string
-  phone: string
-  userName: string
-  position?: number
-  service?: { name?: string }
-}): Promise<boolean> {
-  try {
-    if (!ticket.position || ticket.position > 2) return false
-
-    // Vérification en base AVANT d'envoyer : c'est la vraie source de vérité,
-    // contrairement à un Set en mémoire (useRef) qui se vide à chaque reload
-    // de page ou redémarrage du serveur. Sans ça, un ticket qui avait déjà
-    // reçu son SMS "presque le tour" se voit renvoyer un nouveau SMS après
-    // chaque redémarrage/rechargement, tant qu'il reste en position 1 ou 2.
-    const { data: existing, error: checkError } = await supabase
-      .from("notification")
-      .select("id")
-      .eq("id_ticket", ticket.id)
-      .like("message", "[SMS_ALMOST_TURN]%")
-      .maybeSingle()
-
-    if (checkError) {
-      console.error("Erreur vérification notification existante:", checkError)
-    }
-    if (existing) {
-      // Déjà envoyé pour ce ticket, on ne renvoie pas un deuxième SMS.
-      return false
-    }
-
-    const serviceName = ticket.service?.name || "Service"
-    const message = `${ticket.userName}, préparez-vous ! Vous serez appelé(e) très bientôt. Ticket ${ticket.number} - ${serviceName}. Hôpital du Mali.`
-
-    const result = await sendSmsViaGateway(ticket.phone, message)
-
-    if (!result.success) {
-      console.error(`SMS "presque le tour" échoué pour ticket ${ticket.id}:`, result.error)
-      return false
-    }
-
-    await supabase.from("notification").insert([
-      {
-        id_ticket: ticket.id,
-        message: `[SMS_ALMOST_TURN] Ticket ${ticket.number} - Position ${ticket.position}`,
-        date_envoi: new Date().toISOString(),
-      },
-    ])
-
-    console.log(`✅ SMS "presque le tour" envoyé pour ticket ${ticket.number}`)
-    return true
-  } catch (err) {
-    console.error("Erreur sendAlmostTurnSms:", err)
     return false
   }
 }
@@ -270,5 +212,62 @@ export async function sendCalledSms(ticket: {
   } catch (err) {
     console.error("Erreur sendCalledSms:", err)
     return false
+  }
+}
+
+export function normalizePhoneMali(phone: string | undefined): string | null {
+  if (!phone || typeof phone !== "string") return null;
+
+  const cleaned = phone.trim().replace(/\D/g, "");
+  if (!cleaned) return null;
+
+  if (cleaned.startsWith("223")) {
+    return `+${cleaned}`;
+  }
+  if (cleaned.startsWith("+")) {
+    return cleaned;
+  }
+
+  return `+223${cleaned}`;
+}
+
+export async function sendSmsViaGateway(
+  phoneNumber: string,
+  message: string
+): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  try {
+    const normalizedPhone = normalizePhoneMali(phoneNumber);
+    if (!normalizedPhone) {
+      return { success: false, error: "Numéro invalide" };
+    }
+
+    const response = await fetch("/api/sms/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        phone: normalizedPhone,
+        message,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data.error || "Erreur lors de l'envoi du SMS",
+      };
+    }
+
+    return {
+      success: true,
+      messageId: data.messageId,
+    };
+  } catch (err) {
+    console.error("Erreur SMS client:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Erreur inconnue",
+    };
   }
 }

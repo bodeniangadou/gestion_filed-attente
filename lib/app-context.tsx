@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, ReactNode, useCallback, useEffect, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 import { toast } from "sonner"
-import { sendAlmostTurnSms, sendCalledSms, sendCancelledByStaffSms, sendRedirectedSms } from "@/lib/sms-confirmation"
+import { sendCalledSms, sendCancelledByStaffSms, sendRedirectedSms } from "@/lib/sms-confirmation"
 
 export type UserRole = "visitor" | "patient" | "agent" | "admin"
 
@@ -117,17 +117,17 @@ interface AppContextType {
   loginAsAgent: (agent: Agent) => void
   logout: () => void
   takeTicket: (service: Service, name: string, firstName: string) => Ticket
-  cancelTicket: (ticketId: string) => Promise<void>
+  cancelTicket: (ticketId: string) => Promise<boolean>
   getPatientHistory: () => Ticket[]
   getActiveTickets: () => Ticket[]
   getCurrentAgent: () => Agent | null
   getAgentCounter: () => Counter | null
   getAgentQueue: () => Ticket[]
   callNextPatient: () => Promise<Ticket | null>
-  startConsultation: (ticketId: string) => Promise<void>
-  markAbsent: (ticketId: string) => Promise<void>
-  recallPatient: (ticketId: string) => Promise<void>
-  completeService: (ticketId: string) => Promise<void>
+  startConsultation: (ticketId: string) => Promise<boolean>
+  markAbsent: (ticketId: string) => Promise<boolean>
+  recallPatient: (ticketId: string) => Promise<boolean>
+  completeService: (ticketId: string) => Promise<boolean>
   toggleCounter: (open: boolean, options?: { silent?: boolean }) => Promise<void>
   requestCloseCounter: () => Promise<CloseCounterRequestResult>
   redirectPendingTicketsAndClose: (ticketIds: string[], targetCounterId: string) => Promise<boolean>
@@ -178,8 +178,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [counters, setCounters] = useState<Counter[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [hospitalSettings, setHospitalSettings] = useState<HospitalSettings>(defaultHospitalSettings)
-
-  const sentSmsKeysRef = useRef<Set<string>>(new Set())
 
   const [user, setUser] = useState<User | null>(() => {
     if (typeof window !== "undefined") {
@@ -418,11 +416,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return newTicket
   }, [tickets, counters, user])
 
-  const cancelTicket = useCallback(async (ticketId: string) => {
+  const cancelTicket = useCallback(async (ticketId: string): Promise<boolean> => {
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "cancelled" as const } : t))
     const { error } = await supabase.from("ticket").update({ statut: "cancelled" }).eq("id", ticketId)
-    if (error) { console.error("Erreur annulation BDD:", error) }
+    if (error) {
+      console.error("Erreur annulation BDD:", error)
+      toast.error("Erreur", { description: "Impossible d'annuler le ticket.", id: "action-error" })
+      await fetchTickets()
+      return false
+    }
     await fetchTickets()
+    return true
   }, [fetchTickets])
 
   const getPatientHistory = useCallback(() => {
@@ -456,17 +460,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => b.priorite !== a.priorite ? b.priorite - a.priorite : a.createdAt.getTime() - b.createdAt.getTime())
   }, [getAgentCounter, tickets])
 
- const startConsultation = useCallback(async (ticketId: string) => {
+  // ✅ FIX : startConsultation renvoie maintenant un booléen. Avant, en cas
+  // d'échec de l'écriture Supabase, l'erreur partait seulement en console
+  // et l'agent n'avait aucun retour visuel — le bouton "Démarrer" semblait
+  // "ne rien faire" alors qu'en fait l'écriture avait échoué silencieusement.
+  const startConsultation = useCallback(async (ticketId: string): Promise<boolean> => {
     const debut = new Date()
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "serving" as const, calledAt: debut } : t))
     const { error } = await supabase
       .from("ticket")
       .update({ statut: "serving", date_appel: debut.toISOString() })
       .eq("id", ticketId)
-    if (error) { console.error("Erreur consultation BDD:", error) }
+    if (error) {
+      console.error("Erreur consultation BDD:", error)
+      toast.error("Erreur", { description: "Impossible de démarrer la consultation.", id: "action-error" })
+      await fetchTickets()
+      return false
+    }
     await fetchTickets()
+    return true
   }, [fetchTickets])
 
+  // ✅ FIX : on utilise directement nextTicket.phone (déjà connu depuis la
+  // file d'attente) au lieu de refaire tickets.find(...) après le
+  // fetchTickets() — cette recherche se faisait sur le `tickets` capturé à
+  // la création du callback, potentiellement périmé si l'état a changé
+  // entre-temps (double clic, mise à jour Realtime concurrente), ce qui
+  // pouvait faire "sauter" l'envoi du SMS d'appel.
   const callNextPatient = useCallback(async (): Promise<Ticket | null> => {
     const queue = getAgentQueue()
     const counter = getAgentCounter()
@@ -482,49 +502,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .from("ticket")
       .update({ statut: "called", id_guichet: counter.id, date_appel: calledAt.toISOString() })
       .eq("id", nextTicket.id)
-    if (error) { console.error("Erreur appel BDD:", error); await fetchTickets(); return null }
+    if (error) {
+      console.error("Erreur appel BDD:", error)
+      toast.error("Erreur", { description: "Impossible d'appeler le patient suivant.", id: "action-error" })
+      await fetchTickets()
+      return null
+    }
     await fetchTickets()
 
-    const updatedTicket = tickets.find((t) => t.id === nextTicket.id)
-    if (updatedTicket?.phone) {
+    if (nextTicket.phone) {
       await sendCalledSms({
-        id: updatedTicket.id,
-        number: updatedTicket.number,
-        phone: updatedTicket.phone,
-        userName: updatedTicket.userName,
-        counterName: updatedTicket.counterName,
-        service: updatedTicket.service,
+        id: nextTicket.id,
+        number: nextTicket.number,
+        phone: nextTicket.phone,
+        userName: nextTicket.userName,
+        counterName: counter.name,
+        service: nextTicket.service,
       })
     }
 
     return { ...nextTicket, statut: "called", calledAt, position: 0, counterId: counter.id, counterName: counter.name }
-  }, [getAgentQueue, getAgentCounter, fetchTickets, tickets])
+  }, [getAgentQueue, getAgentCounter, fetchTickets])
 
-  const markAbsent = useCallback(async (ticketId: string) => {
+  // ✅ FIX : renvoie un booléen + toast d'erreur + resynchronisation si
+  // l'écriture échoue, au lieu de laisser l'état local "absent" alors que
+  // la BDD n'a pas changé.
+  const markAbsent = useCallback(async (ticketId: string): Promise<boolean> => {
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "absent" as const } : t))
     const { error } = await supabase.from("ticket").update({ statut: "absent" }).eq("id", ticketId)
-    if (error) { console.error("Erreur absent BDD:", error) }
+    if (error) {
+      console.error("Erreur absent BDD:", error)
+      toast.error("Erreur", { description: "Impossible de marquer le patient absent.", id: "action-error" })
+      await fetchTickets()
+      return false
+    }
     await fetchTickets()
+    return true
   }, [fetchTickets])
 
-  const recallPatient = useCallback(async (ticketId: string) => {
+  // ✅ FIX : idem, retour booléen + toast d'erreur.
+  const recallPatient = useCallback(async (ticketId: string): Promise<boolean> => {
     const recalledAt = new Date()
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, calledAt: recalledAt } : t))
     const { error } = await supabase.from("ticket").update({ date_appel: recalledAt.toISOString() }).eq("id", ticketId)
-    if (error) { console.error("Erreur rappel BDD:", error) }
+    if (error) {
+      console.error("Erreur rappel BDD:", error)
+      toast.error("Erreur", { description: "Impossible de rappeler le patient.", id: "action-error" })
+      await fetchTickets()
+      return false
+    }
     await fetchTickets()
+    return true
   }, [fetchTickets])
 
-  const completeService = useCallback(async (ticketId: string) => {
+  // ✅ FIX : idem, retour booléen + toast d'erreur. C'est ce qui causait
+  // notamment le bouton "Terminer" à sembler ne pas fonctionner.
+  const completeService = useCallback(async (ticketId: string): Promise<boolean> => {
     const completedAt = new Date()
     setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, statut: "completed" as const, completedAt } : t))
     const { error } = await supabase
       .from("ticket")
       .update({ statut: "completed", date_fin: completedAt.toISOString() })
       .eq("id", ticketId)
-    if (error) { console.error("Erreur fin service BDD:", error) }
-
+    if (error) {
+      console.error("Erreur fin service BDD:", error)
+      toast.error("Erreur", { description: "Impossible de terminer la consultation.", id: "action-error" })
+      await fetchTickets()
+      return false
+    }
     await fetchTickets()
+    return true
   }, [fetchTickets])
 
   const toggleCounter = useCallback(async (open: boolean, options?: { silent?: boolean }) => {
@@ -802,57 +849,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [loadUserProfile])
 
-  // SMS "presque le tour" : envoi séquentiel (un par un, espacé de 1,5s) au
-  // lieu d'une rafale simultanée pour tous les tickets éligibles — c'est ce
-  // qui déclenchait le rate limit du gateway SMS. La vérification anti-doublon
-  // réelle se fait maintenant dans sendAlmostTurnSms via la table
-  // "notification" en base (persistante), sentSmsKeysRef ici n'est qu'une
-  // optimisation pour éviter des appels redondants dans la même session.
-  useEffect(() => {
-    const ticketsToNotify = tickets.filter(
-      (ticket) =>
-        ticket.statut === "waiting" &&
-        ticket.phone &&
-        ticket.position &&
-        ticket.position <= 2 &&
-        !sentSmsKeysRef.current.has(`almost_turn_${ticket.id}`)
-    )
-
-    if (ticketsToNotify.length === 0) return
-
-    let cancelled = false
-
-    const sendSequentially = async () => {
-      for (const ticket of ticketsToNotify) {
-        if (cancelled) return
-
-        const smsKey = `almost_turn_${ticket.id}`
-        sentSmsKeysRef.current.add(smsKey)
-
-        try {
-          await sendAlmostTurnSms({
-            id: ticket.id,
-            number: ticket.number,
-            phone: ticket.phone!,
-            userName: ticket.userName,
-            position: ticket.position,
-            service: ticket.service,
-          })
-        } catch (err) {
-          console.error("Erreur envoi SMS presque le tour:", err)
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 1500))
-      }
-    }
-
-    sendSequentially()
-
-    return () => {
-      cancelled = true
-    }
-  }, [tickets])
-
+  // ❌ SUPPRIMÉ : l'ancien useEffect envoyant sendAlmostTurnSms (SMS
+  // "presque le tour" pour position <= 2) a été retiré à la demande, ainsi
+  // que le sentSmsKeysRef qui ne servait qu'à sa déduplication.
 
   useEffect(() => {
     const today = new Date()
@@ -889,7 +888,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [tickets, counters, agents])
 
-
   useEffect(() => {
     setServices(prev => {
       let changed = false
@@ -901,7 +899,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return changed ? next : prev
     })
   }, [tickets, services])
-
 
   useEffect(() => {
     if (!user || user.role !== "agent") return
