@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { LandingView } from "@/components/views/landing-view"
 import { LoginModal } from "@/components/login-modal"
 import { LandingScannerModal } from "@/components/views/LandingScannerModal"
 import { Service } from "@/lib/app-context"
 
-export default function HomePage() {
+// Composant interne qui gère la logique de la page et `useSearchParams`
+function HomePageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   
@@ -17,7 +18,7 @@ export default function HomePage() {
 
   const [pendingServiceId, setPendingServiceId] = useState<string | null>(null)
 
-  // 1. Intercepter le serviceId depuis l'URL quand on arrive de l'extérieur (ex: /?service=UUID)
+  // Intercepter le serviceId depuis l'URL (ex: /?service=UUID)
   useEffect(() => {
     const serviceFromUrl = searchParams.get("service")
     if (serviceFromUrl) {
@@ -74,5 +75,18 @@ export default function HomePage() {
         onServiceScanned={handleServiceScanned}
       />
     </div>
+  )
+}
+
+// Export par défaut entouré du composant Suspense pour satisfaire Next.js
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="size-8 rounded-full border-2 border-primary/30 border-t-primary animate-spin" />
+      </div>
+    }>
+      <HomePageContent />
+    </Suspense>
   )
 }
