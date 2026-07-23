@@ -14,7 +14,7 @@ export function TicketsDistribution() {
   const counter = getAgentCounter()
 
   const serviceTickets = tickets.filter((t) =>
-    counter ? t.service?.id === counter.serviceId : false
+    counter ? t.counterId === counter.id : false
   )
 
   const waiting = serviceTickets.filter(

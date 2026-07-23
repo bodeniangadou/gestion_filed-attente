@@ -96,7 +96,7 @@ export default function FilePage() {
   const counter = getAgentCounter()
 
   const serviceTickets = useMemo(() =>
-    tickets.filter(t => counter ? t.service?.id === counter.serviceId : false),
+    tickets.filter(t => counter ? t.counterId === counter.id : false),
     [tickets, counter]
   )
 

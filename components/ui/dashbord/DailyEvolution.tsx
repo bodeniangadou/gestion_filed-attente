@@ -23,7 +23,7 @@ export function DailyEvolution() {
     today.setHours(0, 0, 0, 0)
 
     const todayServiceTickets = tickets.filter((t) => {
-      if (!counter || t.service?.id !== counter.serviceId) return false
+      if (!counter || t.counterId !== counter.id) return false
       return new Date(t.createdAt) >= today
     })
 

@@ -442,7 +442,7 @@ export default function Page() {
 </button>
                 <button
                   onClick={marquerAbsent}
-                  disabled={!patientActuel || actionLoading}
+                  disabled={!patientActuel || actionLoading || consultationActive}
                   className="flex flex-col items-center gap-2 py-4 rounded-xl bg-rose-500 text-white shadow-md hover:bg-rose-600 transition disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
                 >
                   <UserX size={20} />

@@ -101,7 +101,7 @@ export function AdminServicesView() {
     if (linkedTickets > 0) reasons.push(`${linkedTickets} ticket(s)`)
     if (linkedCounters > 0) reasons.push(`${linkedCounters} guichet(s)`)
     if (linkedAgents > 0) reasons.push(`${linkedAgents} agent(s)`)
-    return reasons.length > 0 ? `Lié à : ${reasons.join(", ")}` : "Supprimer"
+    return reasons.length > 0 ? `Impossible de supprimer (Lié à : ${reasons.join(", ")})` : "Supprimer le service"
   }
 
   // ── Toggle statut ────────────────────────────────────────────────────────────

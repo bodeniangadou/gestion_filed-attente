@@ -52,12 +52,33 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
     services, 
     counters, 
     agents, 
+    tickets,
     createCounter, 
     updateCounter, 
     deleteCounter,
     assignAgentToCounter,
     unassignAgent 
   } = useApp()
+
+  // ── Logique de dépendances pour la suppression de guichet ───────────────────
+  const getCounterDependencies = (counter: Counter) => {
+    const hasAgent = !!(counter.id_agent_actuel || (counter as any).agentId)
+    const linkedTickets = tickets.filter(t => t.counterId === counter.id).length
+    return { hasAgent, linkedTickets }
+  }
+
+  const canDeleteCounter = (counter: Counter) => {
+    const { hasAgent, linkedTickets } = getCounterDependencies(counter)
+    return !hasAgent && linkedTickets === 0
+  }
+
+  const getCounterDeleteTooltip = (counter: Counter) => {
+    const { hasAgent, linkedTickets } = getCounterDependencies(counter)
+    const reasons = []
+    if (hasAgent) reasons.push("agent assigné")
+    if (linkedTickets > 0) reasons.push(`${linkedTickets} ticket(s)`)
+    return reasons.length > 0 ? `Impossible de supprimer (${reasons.join(", ")})` : "Supprimer"
+  }
   
   const [searchQuery, setSearchQuery] = useState("")
   const [filterService, setFilterService] = useState<string>("all")
@@ -66,7 +87,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
   const [showAssignModal, setShowAssignModal] = useState<Counter | null>(null)
   const [formData, setFormData] = useState({
     name: "",
-    number: 1,
+    number: "1",
     serviceId: "",
     isActive: false
   })
@@ -77,7 +98,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
     return matchesSearch && matchesService
   })
 
-  const availableAgents = agents.filter(a => !a.counterId)
+  const availableAgents = agents.filter(a => !counters.some(c => c.id_agent_actuel === a.id))
 
   const handleCreate = () => {
     const service = services.find(s => s.id === formData.serviceId)
@@ -118,15 +139,15 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
   }
 
   const handleUnassign = (counter: Counter) => {
-    if (counter.agentId) {
-      unassignAgent(counter.agentId)
+    if (counter.id_agent_actuel) {
+      unassignAgent(counter.id_agent_actuel)
     }
   }
 
   const resetForm = () => {
     setFormData({
       name: "",
-      number: 1,
+      number: "1",
       serviceId: "",
       isActive: false
     })
@@ -136,7 +157,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
     setEditingCounter(counter)
     setFormData({
       name: counter.name,
-      number: counter.number,
+      number: counter.number || "1",
       serviceId: counter.serviceId,
       isActive: counter.isActive
     })
@@ -242,7 +263,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                                 <Edit className="size-4 mr-2" />
                                 Modifier
                               </DropdownMenuItem>
-                              {counter.agentId ? (
+                              {counter.id_agent_actuel ? (
                                 <DropdownMenuItem onClick={() => handleUnassign(counter)}>
                                   <UserMinus className="size-4 mr-2" />
                                   Retirer l&apos;agent
@@ -253,35 +274,50 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                                   Assigner un agent
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem 
-                                className="text-red-600"
-                                onClick={() => handleDelete(counter.id)}
-                              >
-                                <Trash2 className="size-4 mr-2" />
-                                Supprimer
-                              </DropdownMenuItem>
+                              {(() => {
+                                const deletable = canDeleteCounter(counter)
+                                const deleteTooltip = getCounterDeleteTooltip(counter)
+                                return (
+                                  <DropdownMenuItem 
+                                    disabled={!deletable}
+                                    title={deleteTooltip}
+                                    className={deletable ? "text-red-600" : "text-muted-foreground/30 cursor-not-allowed"}
+                                    onClick={() => {
+                                      if (deletable) handleDelete(counter.id)
+                                    }}
+                                  >
+                                    <Trash2 className="size-4 mr-2" />
+                                    Supprimer
+                                  </DropdownMenuItem>
+                                )
+                              })()}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
 
-                        <div className={`p-3 rounded-xl mb-4 ${counter.agentId ? "bg-primary/5 border border-primary/20" : "bg-accent/50"}`}>
-                          {counter.agentId ? (
-                            <div className="flex items-center gap-2">
-                              <div className="flex size-8 items-center justify-center rounded-full bg-primary/10">
-                                <User className="size-4 text-primary" />
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-foreground">{counter.agentName}</p>
-                                <p className="text-xs text-muted-foreground">Agent assigne</p>
-                              </div>
+                        {(() => {
+                          const assignedAgent = agents.find(a => a.id === counter.id_agent_actuel)
+                          return (
+                            <div className={`p-3 rounded-xl mb-4 ${counter.id_agent_actuel ? "bg-primary/5 border border-primary/20" : "bg-accent/50"}`}>
+                              {counter.id_agent_actuel && assignedAgent ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex size-8 items-center justify-center rounded-full bg-primary/10">
+                                    <User className="size-4 text-primary" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-foreground">{assignedAgent.firstName} {assignedAgent.name}</p>
+                                    <p className="text-xs text-muted-foreground">Agent assigne</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                  <User className="size-4" />
+                                  <span className="text-sm">Aucun agent assigne</span>
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <User className="size-4" />
-                              <span className="text-sm">Aucun agent assigne</span>
-                            </div>
-                          )}
-                        </div>
+                          )
+                        })()}
 
                         <div className="flex items-center justify-between text-sm mb-4">
                           <span className="text-muted-foreground">Tickets servis</span>
@@ -302,7 +338,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                           <Switch 
                             checked={counter.isActive}
                             onCheckedChange={(checked) => updateCounter(counter.id, { isActive: checked })}
-                            disabled={!counter.agentId}
+                            disabled={!counter.id_agent_actuel}
                           />
                         </div>
                       </CardContent>
@@ -376,7 +412,7 @@ export function AdminCountersView({ onBack }: AdminCountersViewProps) {
                 type="number"
                 min={1}
                 value={formData.number}
-                onChange={(e) => setFormData({ ...formData, number: parseInt(e.target.value) || 1 })}
+                onChange={(e) => setFormData({ ...formData, number: e.target.value })}
                 className="mt-1"
               />
             </div>

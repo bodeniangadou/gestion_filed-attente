@@ -30,11 +30,9 @@ interface AgentFormState {
 }
 
 export function AgentsView() {
-  const { agents, services, counters, fetchAgents, fetchCounters, setAgents } = useApp()
+  const { agents, services, counters, tickets, fetchAgents, fetchCounters, setAgents } = useApp()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showAssignModal, setShowAssignModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [agentToDelete, setAgentToDelete] = useState<Agent | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [newAgent, setNewAgent] = useState<AgentFormState>({
     name: "", firstName: "", email: "", password: "", phone: "", serviceId: "", counterId: ""
@@ -42,6 +40,30 @@ export function AgentsView() {
   const [isBusy, setIsBusy] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterStatus, setFilterStatus] = useState<"all" | "online" | "offline" | "banned">("all")
+
+  // ── Logique de dépendances pour la suppression ──────────────────────────────────
+  const getAgentDependencies = (agentId: string) => {
+    const assignedCounter = counters.find(c => c.id_agent_actuel === agentId)
+    const linkedTickets = tickets.filter(t => (t as any).id_agent === agentId || (assignedCounter && t.counterId === assignedCounter.id)).length
+    return {
+      hasCounter: !!assignedCounter,
+      counterName: assignedCounter ? (assignedCounter.number || assignedCounter.name) : null,
+      linkedTickets
+    }
+  }
+
+  const canDeleteAgent = (agentId: string) => {
+    const { hasCounter, linkedTickets } = getAgentDependencies(agentId)
+    return !hasCounter && linkedTickets === 0
+  }
+
+  const getAgentDeleteTooltip = (agentId: string) => {
+    const { hasCounter, counterName, linkedTickets } = getAgentDependencies(agentId)
+    const reasons = []
+    if (hasCounter) reasons.push(`assigné au guichet ${counterName}`)
+    if (linkedTickets > 0) reasons.push(`${linkedTickets} ticket(s)`)
+    return reasons.length > 0 ? `Impossible de supprimer (${reasons.join(", ")})` : "Supprimer le compte"
+  }
 
   const filteredAgents = useMemo(() => {
     return agents.filter(agent => {
@@ -196,22 +218,47 @@ export function AgentsView() {
     await fetchAgents()
   }
 
-  const handleDelete = async () => {
-    if (!agentToDelete) return
+  const handleDeleteAgent = async (agent: Agent) => {
+    if (!canDeleteAgent(agent.id)) {
+      toast.error("Impossible de supprimer cet agent car des données (tickets ou guichet) y sont liées.")
+      return
+    }
+    if (!confirm(`Voulez-vous vraiment supprimer définitivement l'agent ${agent.firstName || ""} ${agent.name || ""} ?`)) {
+      return
+    }
     setIsBusy(true)
+    const toastId = toast.loading("Suppression du compte agent...")
     try {
-      const id = agentToDelete.id
-      await supabase.from("ticket").delete().eq("id_agent", id)
-      await supabase.from("guichet").update({ id_agent_actuel: null }).eq("id_agent_actuel", id)
-      const { error } = await supabase.from("utilisateur").delete().eq("id", id)
-      if (error) throw error
-      setAgents(prev => prev.filter(a => a.id !== id))
-      toast.success(`${agentToDelete.firstName} ${agentToDelete.name} supprimé.`)
-      setShowDeleteModal(false)
-      setAgentToDelete(null)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        toast.dismiss(toastId)
+        toast.error("Session expirée. Veuillez vous reconnecter.")
+        return
+      }
+
+      const res = await fetch("/api/delete-agent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ agentId: agent.id }),
+      })
+
+      const result = await res.json()
+      if (!res.ok) {
+        toast.dismiss(toastId)
+        toast.error("Erreur : " + (result.error || "Impossible de supprimer l'agent."))
+        return
+      }
+
+      setAgents(prev => prev.filter(a => a.id !== agent.id))
+      toast.dismiss(toastId)
+      toast.success(`Agent ${agent.firstName || ""} ${agent.name || ""} supprimé.`)
       await fetchCounters()
       await fetchAgents()
     } catch (err: any) {
+      toast.dismiss(toastId)
       toast.error("Erreur : " + (err.message || "Erreur inconnue"))
     } finally {
       setIsBusy(false)
@@ -376,9 +423,20 @@ export function AgentsView() {
                             <ShieldAlert className="mr-2 size-4" />
                             {agent.est_banni ? "Révoquer le bannissement" : "Bannir définitivement"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive " onClick={() => { setAgentToDelete(agent); setShowDeleteModal(true) }}>
-                            <Trash2 className="mr-2 size-4" /> Supprimer le compte
-                          </DropdownMenuItem>
+                          {(() => {
+                            const deletable = canDeleteAgent(agent.id)
+                            const deleteTooltip = getAgentDeleteTooltip(agent.id)
+                            return (
+                              <DropdownMenuItem
+                                disabled={!deletable}
+                                title={deleteTooltip}
+                                className={deletable ? "text-destructive" : "text-muted-foreground/30 cursor-not-allowed"}
+                                onClick={() => handleDeleteAgent(agent)}
+                              >
+                                <Trash2 className="mr-2 size-4" /> Supprimer le compte
+                              </DropdownMenuItem>
+                            )
+                          })()}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -524,34 +582,7 @@ export function AgentsView() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Suppression */}
-      <Dialog open={showDeleteModal} onOpenChange={open => { if (!open) { setShowDeleteModal(false); setAgentToDelete(null) } }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <Trash2 className="size-5" /> Supprimer le compte agent
-            </DialogTitle>
-            <DialogDescription className="pt-1">
-              Action <span className="font-semibold text-foreground">irréversible</span>. La suppression de{" "}
-              <span className="font-semibold text-foreground">{agentToDelete?.firstName} {agentToDelete?.name}</span> entraînera :
-            </DialogDescription>
-          </DialogHeader>
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 space-y-2 text-sm text-muted-foreground">
-            {["La suppression de tous ses tickets et de son historique.", "La libération de son guichet et de ses affectations.", "La suppression définitive du compte et de ses accès."].map((item, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className="text-destructive mt-0.5">•</span>
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => { setShowDeleteModal(false); setAgentToDelete(null) }}>Annuler</Button>
-            <Button variant="destructive" className="flex-1" onClick={handleDelete} disabled={isBusy}>
-              {isBusy ? "Suppression..." : "Confirmer la suppression"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+
     </div>
   )
 }

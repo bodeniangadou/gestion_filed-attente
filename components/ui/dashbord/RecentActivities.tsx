@@ -37,7 +37,7 @@ export function RecentActivities() {
   const counter = getAgentCounter()
 
   const activities = tickets
-    .filter((t) => counter ? t.service?.id === counter.serviceId : false)
+    .filter((t) => counter ? t.counterId === counter.id : false)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 6)
 

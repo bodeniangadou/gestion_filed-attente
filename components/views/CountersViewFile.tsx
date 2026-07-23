@@ -17,7 +17,27 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useApp } from "@/lib/app-context"
 
 export function CountersView() {
-  const { counters, services, setCounters, agents, fetchServices, fetchCounters, deleteCounter } = useApp()
+  const { counters, services, setCounters, agents, fetchServices, fetchCounters, deleteCounter, tickets } = useApp()
+
+  // ── Logique de dépendances pour la suppression ──────────────────────────────────
+  const getCounterDependencies = (counter: any) => {
+    const hasAgent = !!counter.id_agent_actuel
+    const linkedTickets = tickets.filter(t => t.counterId === counter.id).length
+    return { hasAgent, linkedTickets }
+  }
+
+  const canDeleteCounter = (counter: any) => {
+    const { hasAgent, linkedTickets } = getCounterDependencies(counter)
+    return !hasAgent && linkedTickets === 0
+  }
+
+  const getCounterDeleteTooltip = (counter: any) => {
+    const { hasAgent, linkedTickets } = getCounterDependencies(counter)
+    const reasons = []
+    if (hasAgent) reasons.push("agent assigné")
+    if (linkedTickets > 0) reasons.push(`${linkedTickets} ticket(s)`)
+    return reasons.length > 0 ? `Impossible de supprimer (${reasons.join(", ")})` : "Supprimer le guichet"
+  }
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newCounter, setNewCounter] = useState({ name: "", serviceId: "", agentId: "" })
   const [showEditModal, setShowEditModal] = useState(false)
@@ -238,16 +258,24 @@ export function CountersView() {
                           <DropdownMenuItem onClick={() => { setEditingCounter(counter); setShowEditModal(true) }}>
                             <Edit2 className="mr-2 size-4" /> Modifier
                           </DropdownMenuItem>
-                          <DropdownMenuItem 
-  className="text-destructive"
-  onClick={() => {
-    if (confirm("Supprimer ce guichet ?")) {
-      deleteCounter(counter.id);
-    }
-  }}
->
-  <Trash2 className="mr-2 size-4" /> Supprimer
-</DropdownMenuItem>
+                          {(() => {
+                            const deletable = canDeleteCounter(counter)
+                            const deleteTooltip = getCounterDeleteTooltip(counter)
+                            return (
+                              <DropdownMenuItem
+                                disabled={!deletable}
+                                title={deleteTooltip}
+                                className={deletable ? "text-destructive" : "text-muted-foreground/30 cursor-not-allowed"}
+                                onClick={() => {
+                                  if (deletable && confirm("Supprimer ce guichet ?")) {
+                                    deleteCounter(counter.id)
+                                  }
+                                }}
+                              >
+                                <Trash2 className="mr-2 size-4" /> Supprimer
+                              </DropdownMenuItem>
+                            )
+                          })()}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
