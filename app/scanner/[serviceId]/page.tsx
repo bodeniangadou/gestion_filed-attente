@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useRef } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { useApp } from "@/lib/app-context"
 
@@ -8,22 +8,29 @@ export default function ScannerRedirect() {
   const params = useParams()
   const router = useRouter()
   const { user, isLoading } = useApp()
+  const hasRedirected = useRef(false)
 
-
-  const serviceId = Array.isArray(params.serviceId) ? params.serviceId[0] : params.serviceId
+  const rawServiceId = params?.serviceId
+  const serviceId = Array.isArray(rawServiceId) ? rawServiceId[0] : rawServiceId
 
   useEffect(() => {
-    if (!serviceId) return
+    // Si pas de serviceId, ou si c'est encore en chargement, ou si on a DÉJÀ redirigé -> STOP
+    if (!serviceId || isLoading || hasRedirected.current) return
 
- 
-    if (isLoading) return
+    // On verrouille la redirection pour éviter les boucles
+    hasRedirected.current = true
 
-    if (user) {
-      router.replace(`/patient/services?service=${serviceId}`)
-    } else {
-      router.replace(`/?service=${serviceId}`)
+    const targetUrl = user 
+      ? `/patient/services?service=${encodeURIComponent(serviceId)}`
+      : `/?service=${encodeURIComponent(serviceId)}`
+
+    // Navigation propre Next.js avec fallback natif si Next.js n'est pas prêt
+    try {
+      router.replace(targetUrl)
+    } catch {
+      window.location.replace(targetUrl)
     }
-  }, [serviceId, router, user, isLoading])
+  }, [serviceId, user, isLoading, router])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
