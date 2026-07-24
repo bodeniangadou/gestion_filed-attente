@@ -147,6 +147,7 @@ interface AppContextType {
   getStatistics: () => {
     totalPatients: number
     avgWaitTime: number
+    avgServiceDuration: number
     activeServices: number
     activeCounters: number
     ticketsToday: number
@@ -809,13 +810,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
     const todayTickets = tickets.filter(t => new Date(t.createdAt) >= today)
     const completedToday = todayTickets.filter(t => t.statut === "completed")
+
+    // Temps d'attente : de la création du ticket jusqu'à l'appel
     const totalWaitTime = completedToday.reduce((acc, t) => {
       if (t.calledAt && t.createdAt) return acc + (new Date(t.calledAt).getTime() - new Date(t.createdAt).getTime())
       return acc
     }, 0)
+
+    // Durée de service : de l'appel jusqu'à la fin de la consultation
+    const ticketsWithDuration = completedToday.filter(t => t.calledAt && t.completedAt)
+    const totalServiceDuration = ticketsWithDuration.reduce((acc, t) => {
+      return acc + (new Date(t.completedAt!).getTime() - new Date(t.calledAt!).getTime())
+    }, 0)
+    const avgServiceDuration = ticketsWithDuration.length > 0
+      ? Math.max(1, Math.round(totalServiceDuration / ticketsWithDuration.length / 60000))
+      : 5 // fallback 5 min si pas encore de données aujourd'hui
+
     return {
       totalPatients: tickets.filter(t => t.statut === "waiting").length,
       avgWaitTime: completedToday.length > 0 ? Math.round(totalWaitTime / completedToday.length / 60000) : 0,
+      avgServiceDuration,
       activeServices: services.filter(s => s.isActive).length,
       activeCounters: counters.filter(c => c.isActive).length,
       ticketsToday: todayTickets.length,

@@ -13,10 +13,11 @@ interface HomeViewProps {
 }
 
 export function HomeView({ onNavigate, onScanQR }: HomeViewProps) {
-  const { services } = useApp()
+  const { services, getStatistics } = useApp()
 
   const totalWaiting = services.reduce((acc, s) => acc + s.currentQueue, 0)
-  const avgWaitTime = Math.round(services.reduce((acc, s) => acc + s.waitTime, 0) / services.length)
+  const stats = getStatistics()
+  const avgWaitTime = stats.avgWaitTime
 
   return (
     <div className="min-h-screen bg-background pb-24 lg:pb-8">
@@ -88,7 +89,7 @@ export function HomeView({ onNavigate, onScanQR }: HomeViewProps) {
                   <Clock className="size-5 text-emerald" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">{avgWaitTime} min</p>
+                  <p className="text-2xl font-bold text-foreground">{avgWaitTime > 0 ? `${avgWaitTime} min` : "–"}</p>
                   <p className="text-xs text-muted-foreground">Temps moyen</p>
                 </div>
               </CardContent>

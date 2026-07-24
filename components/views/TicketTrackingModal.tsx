@@ -17,6 +17,7 @@ interface TicketTrackingModalProps {
     isYourTurn?: boolean
     counterName?: string
     phoneNumber?: string
+    createdAt?: Date | string
   } | null
   onCancelTicket: () => void
 }
@@ -28,6 +29,21 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
   onCancelTicket
 }) => {
   const prevStatutRef = useRef<string | undefined>(undefined)
+  const [, setTick] = React.useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const formatWaitTime = (createdAt?: Date | string) => {
+    if (!createdAt) return ""
+    const minutes = Math.round((Date.now() - new Date(createdAt).getTime()) / 60000)
+    if (minutes < 0) return "A l'instant"
+    if (minutes < 60) return `${minutes} min`
+    const hours = Math.floor(minutes / 60)
+    return `${hours}h ${minutes % 60}min`
+  }
 
   useEffect(() => {
     if (!ticket) return
@@ -202,9 +218,17 @@ export const TicketTrackingModal: React.FC<TicketTrackingModalProps> = ({
                       {positionMessage}
                     </p>
                     {!isAbsent && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Clock className="size-4 text-amber-500 shrink-0" />
-                        <span className="text-foreground font-semibold">~ {ticket.waitTime} min d'attente</span>
+                      <div className="flex flex-col gap-1.5 mt-2">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Clock className="size-4 text-amber-500 shrink-0" />
+                          <span className="text-foreground font-semibold">~ {ticket.waitTime} min d'attente estimée</span>
+                        </div>
+                        {ticket.createdAt && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Activity className="size-4 text-blue-500 shrink-0" />
+                            <span className="text-foreground font-semibold">En attente depuis : {formatWaitTime(ticket.createdAt)}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

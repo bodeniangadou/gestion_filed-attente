@@ -595,7 +595,7 @@ const exportData = useMemo(() => {
   return {
     stats: {
       totalWaiting: waitingCount,
-      avgWaitTime: stats.avgWaitTime || 18,
+      avgWaitTime: stats.avgWaitTime > 0 ? stats.avgWaitTime : 0,
       ticketsCount: periodTickets.length,
       activeAgents,
       totalAgents: agents.length,
@@ -766,7 +766,7 @@ const openCounters = counters.filter(c => c.isActive).length;
               trend: waitingCount - prevWaiting,
             },
             {
-              label: "Temps moyen d'attente", value: `${stats.avgWaitTime || 18} min`,
+              label: "Temps moyen d'attente", value: stats.avgWaitTime > 0 ? `${stats.avgWaitTime} min` : "-",
               icon: Clock, color: "text-amber-600", bg: "bg-amber-100",
               trend: 0,
             },

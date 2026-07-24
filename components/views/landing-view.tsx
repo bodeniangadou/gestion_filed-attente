@@ -146,7 +146,7 @@ export function LandingView({
   pendingServiceId,
   onPendingServiceConsumed,
 }: LandingViewProps) {
-  const { services, counters, tickets, agents, fetchTickets, ticketsLoaded } = useApp()
+  const { services, counters, tickets, agents, fetchTickets, ticketsLoaded, getStatistics } = useApp()
   const [searchQuery, setSearchQuery] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
@@ -224,18 +224,21 @@ export function LandingView({
     return mostUrgentTicket
   }, [activeModalTicketId, trackedActiveTickets, mostUrgentTicket])
 
+  const liveStats = useMemo(() => getStatistics(), [tickets, services, counters])
+
   const generatedTicket = ticketShownInModal
     ? {
         id: ticketShownInModal.id,
         number: ticketShownInModal.number,
         service: ticketShownInModal.service?.name || "",
-        waitTime: Math.max(5, (ticketShownInModal.position || 1) * 5),
+        waitTime: Math.max(liveStats.avgServiceDuration, (ticketShownInModal.position || 1) * liveStats.avgServiceDuration),
         queuePos: ticketShownInModal.position,
         totalInQueue: ticketShownInModal.totalInQueue,
         statut: ticketShownInModal.statut,
         isYourTurn: ticketShownInModal.statut === "called" || ticketShownInModal.statut === "serving",
         counterName: ticketShownInModal.counterName,
         phoneNumber: ticketShownInModal.phone,
+        createdAt: ticketShownInModal.createdAt,
       }
     : null
 
@@ -328,16 +331,17 @@ export function LandingView({
     window.history.replaceState({}, document.title, window.location.pathname)
   }, [services, servicesWithStatus])
 
+
   const avgWaitTime = useMemo(() => {
+    if (liveStats.avgWaitTime > 0) return liveStats.avgWaitTime
+    // Fallback : estimation basée sur la file d'attente si pas encore de tickets completés
     const active = servicesWithStatus.filter((s) => s.isActive)
     if (active.length === 0) return 0
-    return Math.round(
-      active.reduce((acc, s) => {
-        const q = tickets.filter((t) => t.service?.id === s.id && t.statut === "waiting").length
-        return acc + q * 5
-      }, 0) / active.length
-    )
-  }, [servicesWithStatus, tickets])
+    const totalWaiting = active.reduce((acc, s) => {
+      return acc + tickets.filter((t) => t.service?.id === s.id && t.statut === "waiting").length
+    }, 0)
+    return Math.round((totalWaiting * liveStats.avgServiceDuration) / Math.max(active.length, 1))
+  }, [liveStats, servicesWithStatus, tickets])
 
   const filteredAndSortedServices = useMemo(() =>
     services
@@ -603,7 +607,7 @@ export function LandingView({
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
               { icon: <Users className="size-6 text-primary" />, value: totalWaiting, label: "Patients en attente", pulse: true },
-              { icon: <Clock className="size-6 text-primary" />, value: `${avgWaitTime} min`, label: "Temps moyen" },
+              { icon: <Clock className="size-6 text-primary" />, value: avgWaitTime > 0 ? `${avgWaitTime} min` : "–", label: "Temps moyen" },
               { icon: <Building2 className="size-6 text-primary" />, value: services.length, label: "Services" },
               { icon: <CheckCircle2 className="size-6 text-primary" />, value: "24/7", label: "Disponibilité" },
             ].map((stat, i) => (
@@ -702,7 +706,7 @@ export function LandingView({
                           <div className="flex items-center justify-between pt-2 border-t border-border/50 mt-2">
                             <div className="flex items-center gap-1 text-sm text-muted-foreground">
                               <Clock className="size-4" />
-                              <span>{service.isActive ? `~${service.waitTime || 10} min` : "Indisponible"}</span>
+                              <span>{service.isActive ? (() => { const w = tickets.filter(t => t.service?.id === service.id && t.statut === "waiting").length; const est = w * liveStats.avgServiceDuration; return est > 0 ? `~${est} min` : "Sans attente" })() : "Indisponible"}</span>
                             </div>
                             {service.isActive && !hasTicketHere ? (
                               <span className="text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">

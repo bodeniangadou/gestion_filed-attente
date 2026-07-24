@@ -36,10 +36,12 @@ export default function Page() {
     markAbsent, completeService, startConsultation, toggleCounter,
     requestCloseCounter, redirectPendingTicketsAndClose,
     cancelPendingTicketsAndClose, keepPendingTicketsAndClose,
+    getStatistics
   } = useApp();
 
   const counter = getAgentCounter();
   const fileAttente = getAgentQueue();
+  const stats = getStatistics();
 
   const [patientActuel, setPatientActuel] = useState<Ticket | null>(null);
   const [sonActif, setSonActif] = useState(true);
@@ -316,7 +318,7 @@ export default function Page() {
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
 
-  const getTempsAttenteEstime = (idx: number) => (idx + 1) * 5;
+  const getTempsAttenteEstime = (idx: number) => (idx + 1) * stats.avgServiceDuration;
 
   if (!counter) {
     return (
